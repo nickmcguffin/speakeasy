@@ -14,6 +14,15 @@ io.on("connection", (socket) => {
   console.log(`socket connected: ${socket.id}`);
 });
 
+app.get("/api/health", (_req, res) => {
+  res.json({ ok: true });
+});
+
+// Catches any method and depth under /api. New API routes go above this.
+app.use("/api", (_req, res) => {
+  res.status(404).json({ error: "NOT_FOUND" });
+});
+
 if (process.env.NODE_ENV === "production") {
   // Compiled to dist/server/, next to the client build in dist/client/.
   const clientDir = path.join(import.meta.dirname, "../client");
