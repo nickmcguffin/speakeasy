@@ -35,7 +35,7 @@ This document describes the design for the MVP in the README. It covers only wha
    |  WSS:   Socket.IO /socket.io      (ciphertext only, never the key)
    v
  Render web service (one Node process)
-   - Express: REST API, static client files, SPA fallback
+   - Express: REST API, static client files, /r/:roomId route
    - Socket.IO: room membership, message relay
    |  TLS, pooled connection
    v
@@ -60,6 +60,14 @@ https://<host>/r/<roomId>#<key>
 | `/r/:roomId#key` | Room: name prompt (first visit), then chat |
 
 Two routes only, so the client reads `location.pathname` and `location.hash`, and uses `history.pushState`. No router library unless more routes were added (user admin, history etc.). 
+
+### Server routes for the client
+The server serves the built client from `client/dist` whenever that folder exists. There is no mode switch. The path is resolved from `process.cwd()`, because the source and compiled server files are in different folders, so the server must start from the repo root.
+
+- `/` and real files come from `express.static`.
+- An explicit `/r/:roomId` route returns `index.html` with status 200.
+- Unknown paths that are not /api and have no file extension return index.html with status 404.
+- Other missing paths, such as `/assets/missing.js`, return a plain 404.
 
 ## 3. Data flows
 
@@ -99,6 +107,7 @@ Two routes only, so the client reads `location.pathname` and `location.hash`, an
 | `POST /api/rooms` | `201 { roomId }` |
 | `GET /api/rooms/:roomId` | `200 { roomId, createdAt }` or `404 { error: "ROOM_NOT_FOUND" }` |
 | `GET /api/health` | `200 { ok: true }` (Render health check) |
+| Any other `/api` request | `404 { error: "NOT_FOUND" }` |
 
 ### Socket.IO events
 Typed with Socket.IO's `ClientToServerEvents` and `ServerToClientEvents` generics. The types live in `shared/`.
@@ -130,7 +139,7 @@ type EncryptedMessage = {
   createdAt: string;   // ISO 8601
 };
 
-type ErrorCode = "ROOM_NOT_FOUND" | "INVALID_INPUT" | "NOT_JOINED" | "SERVER_ERROR";
+type ErrorCode = "ROOM_NOT_FOUND" | "NOT_FOUND" | "INVALID_INPUT" | "NOT_JOINED" | "SERVER_ERROR";
 
 type JoinResult = { ok: true; messages: EncryptedMessage[] } | { ok: false; error: ErrorCode };
 type SendResult = { ok: true; message: EncryptedMessage } | { ok: false; error: ErrorCode };
