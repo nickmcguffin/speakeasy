@@ -90,4 +90,23 @@ I chose this over server-side encryption at rest, because a key stored next to t
 - Wider test coverage.
 
 ## Run locally
-- TODO
+Requires Node 25 (see `engines` in `package.json`).
+
+```sh
+npm install
+```
+
+**Development**
+```sh
+npm run dev
+```
+Open http://localhost:5173. Vite serves the client and proxies `/api` and `/socket.io` to the server on port 3000. The server reloads when its files change.
+
+**Production build**
+```sh
+npm run build
+npm start
+```
+Open http://localhost:3000. The server serves the built client and the WebSocket on one port.
+
+Set `PORT` to run the server on a different port in either mode.
