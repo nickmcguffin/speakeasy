@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "concurrently --names client,server \"vite\" \"tsx watch --clear-screen=false server/index.ts\"",
     "build": "tsc -p client && vite build && tsc -p server",
-    "start": "node dist/server/index.js --production"
+    "start": "node dist/server/index.js"
   },
   "dependencies": {
     "express": "^5.3.0",

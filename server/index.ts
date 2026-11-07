@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { createServer } from "node:http";
 import path from "node:path";
 import express from "express";
@@ -23,15 +24,24 @@ app.use("/api", (_req, res) => {
   res.status(404).json({ error: "NOT_FOUND" });
 });
 
-if (process.argv.includes("--production")) {
-  // Compiled to dist/server/, next to the client build in dist/client/.
-  const clientDir = path.join(import.meta.dirname, "../client");
+// From cwd because the source and compiled server files are in different folders.
+const clientDir = path.join(process.cwd(), "client/dist");
 
-  // Also serves index.html for "/". Missing files fall through to a 404.
+if (existsSync(clientDir)) {
+  // Also serves index.html for "/". Missing files fall through to the routes below.
   app.use(express.static(clientDir));
 
   app.get("/r/:roomId", (_req, res) => {
     res.sendFile("index.html", { root: clientDir });
+  });
+
+  // /api never reaches this. A path with an extension is a missing file, so it gets a plain 404.
+  app.get("/{*path}", (req, res, next) => {
+    if (path.extname(req.path)) {
+      next();
+      return;
+    }
+    res.status(404).sendFile("index.html", { root: clientDir });
   });
 }
 
