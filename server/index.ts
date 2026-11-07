@@ -43,6 +43,8 @@ if (existsSync(clientDir)) {
     }
     res.status(404).sendFile("index.html", { root: clientDir });
   });
+} else {
+  console.warn(`Client build not found at ${clientDir}. Serving API only.`);
 }
 
 httpServer.listen(port, () => {
