@@ -26,16 +26,11 @@ app.use("/api", (_req, res) => {
 if (process.env.NODE_ENV === "production") {
   // Compiled to dist/server/, next to the client build in dist/client/.
   const clientDir = path.join(import.meta.dirname, "../client");
-  const notSpaRoute = /^\/(api|socket\.io)(\/|$)/;
 
+  // Also serves index.html for "/". Missing files fall through to a 404.
   app.use(express.static(clientDir));
 
-  // Express 5 needs a named wildcard. The braces let it match "/" as well.
-  app.get("/{*path}", (req, res, next) => {
-    if (notSpaRoute.test(req.path)) {
-      next();
-      return;
-    }
+  app.get("/r/:roomId", (_req, res) => {
     res.sendFile("index.html", { root: clientDir });
   });
 }
