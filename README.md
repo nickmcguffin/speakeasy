@@ -90,7 +90,7 @@ I chose this over server-side encryption at rest, because a key stored next to t
 - Wider test coverage.
 
 ## Run locally
-Requires Node 25 (see `engines` in `package.json`).
+Requires Node 26 (see `.node-version`).
 
 ```sh
 npm install

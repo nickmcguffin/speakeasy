@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { createServer } from "node:http";
 import path from "node:path";
 import express from "express";
@@ -14,21 +15,36 @@ io.on("connection", (socket) => {
   console.log(`socket connected: ${socket.id}`);
 });
 
-if (process.env.NODE_ENV === "production") {
-  // Compiled to dist/server/, next to the client build in dist/client/.
-  const clientDir = path.join(import.meta.dirname, "../client");
-  const notSpaRoute = /^\/(api|socket\.io)(\/|$)/;
+app.get("/api/health", (_req, res) => {
+  res.json({ ok: true });
+});
 
+// Catches any method and depth under /api. New API routes go above this.
+app.use("/api", (_req, res) => {
+  res.status(404).json({ error: "NOT_FOUND" });
+});
+
+// From cwd because the source and compiled server files are in different folders.
+const clientDir = path.join(process.cwd(), "client/dist");
+
+if (existsSync(clientDir)) {
+  // Also serves index.html for "/". Missing files fall through to the routes below.
   app.use(express.static(clientDir));
 
-  // Express 5 needs a named wildcard. The braces let it match "/" as well.
+  app.get("/r/:roomId", (_req, res) => {
+    res.sendFile("index.html", { root: clientDir });
+  });
+
+  // /api never reaches this. A path with an extension is a missing file, so it gets a plain 404.
   app.get("/{*path}", (req, res, next) => {
-    if (notSpaRoute.test(req.path)) {
+    if (path.extname(req.path)) {
       next();
       return;
     }
-    res.sendFile("index.html", { root: clientDir });
+    res.status(404).sendFile("index.html", { root: clientDir });
   });
+} else {
+  console.warn(`Client build not found at ${clientDir}. Serving API only.`);
 }
 
 httpServer.listen(port, () => {
