@@ -23,7 +23,7 @@ app.use("/api", (_req, res) => {
   res.status(404).json({ error: "NOT_FOUND" });
 });
 
-if (process.env.NODE_ENV === "production") {
+if (process.argv.includes("--production")) {
   // Compiled to dist/server/, next to the client build in dist/client/.
   const clientDir = path.join(import.meta.dirname, "../client");
 
