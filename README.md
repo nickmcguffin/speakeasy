@@ -1,7 +1,7 @@
 # Speakeasy
 
 ## What it is
-An MVP for a very simple private chat application. A user creates a room, shares the link, and other people use the link to join and chat in real time. Messages are end-to-end encrypted.
+An MVP for a very simple private chat application. A user creates a room, shares the link, and other people use the link to join and chat in real time. Messages are end-to-end encrypted with one shared key per room (see "Encryption" for what this does and does not protect).
 
 ## Live demo
 View the live demo [here](https://speakeasy-4u7o.onrender.com/).
@@ -67,7 +67,9 @@ Messages are end-to-end encrypted, because "private" should mean that the server
 - **Secure context.** Web Crypto works only on HTTPS or `localhost`. Elsewhere the app shows "This browser cannot encrypt messages".
 - **Result.** The server, the database and the host cannot read messages. Only people with the full link can.
 
-I chose this over server-side encryption at rest, because a key stored next to the database protects against a database leak but not against the server itself.
+I chose this over server-side encryption at rest, because a key stored next to the database protects against a database leak but not against the server itself. 
+
+This is end-to-end encryption with one shared key per room, the same pattern as Excalidraw shared drawings or PrivateBin. It protects message text from the server and the database. It does not give forward secrecy, sender authentication or member removal, which production messaging apps get from protocols such as Signal or MLS. For a real product I would use an established protocol and audited library rather than extend this design.
 
 ## Known limits
 - On the free tier, the first load after a quiet period can take about a minute while the server wakes up.
@@ -77,6 +79,8 @@ I chose this over server-side encryption at rest, because a key stored next to t
 - The server can only limit the size of the encrypted data, not check the message text.
 - No moderation, editing or deleting of messages.
 - After a very long disconnect, only the newest 200 missed messages load.
+- The room ID alone gives partial access. The server, a database leak or a link without the fragment gives the room ID. With it, a person can join, see display names and message times, and send messages that nobody can decrypt. They cannot read the messages.
+- You must trust the server code. This is a limit of all end-to-end encryption in web apps. The server sends the JavaScript, so a changed server could send code that reads the key. Desktop and mobile apps have the same problem in a smaller form.
 
 ## How I used AI tools
 - TODO
@@ -94,6 +98,8 @@ I chose this over server-side encryption at rest, because a key stored next to t
 - Rate limits.
 - Multiple server instances (for example, the Socket.IO Redis adapter).
 - Wider test coverage.
+- Proof of key to join: the client derives a token from the key, and the server allows a join only with that token. This stops people who have only the room ID.
+- Accounts and invite-only rooms: sign in with an email magic link, the creator invites people by email, and the server allows a join only for invited members. This means a leaked link alone is not enough, and the creator can remove a person. Full removal also needs key rotation, because a removed member still has the old key.
 
 ## Run locally
 Requires Node 26 (see `.node-version`).
