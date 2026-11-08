@@ -1,10 +1,13 @@
-// TEMPORARY STAND-IN. THIS DOES NOT ENCRYPT ANYTHING. Step 6 replaces it with AES-GCM.
-// Only the async API is final: generateKey, importKey, encrypt and decrypt.
-// Here "ciphertext" is just the base64url UTF-8 text, and the key is ignored.
+// All Web Crypto use is in this module. Messages are encrypted with AES-GCM and a 256-bit
+// room key that lives in the link fragment. The server only ever sees ciphertext and IVs.
 
-export type RoomKey = { readonly temporary: true }; // becomes CryptoKey in step 6
+export type RoomKey = CryptoKey;
 
 export type EncryptedText = { ciphertext: string; iv: string };
+
+const algorithm = "AES-GCM";
+const keyLengthBytes = 32;
+const ivLengthBytes = 12;
 
 function toBase64url(bytes: Uint8Array): string {
   let binary = "";
@@ -17,7 +20,8 @@ function toBase64url(bytes: Uint8Array): string {
     .replaceAll("=", "");
 }
 
-function fromBase64url(text: string): Uint8Array {
+// Throws on characters outside base64.
+function fromBase64url(text: string): Uint8Array<ArrayBuffer> {
   const binary = atob(text.replaceAll("-", "+").replaceAll("_", "/"));
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index++) {
@@ -26,32 +30,43 @@ function fromBase64url(text: string): Uint8Array {
   return bytes;
 }
 
-// Returns the encoded key for the link fragment.
+// Returns the key encoded for the link fragment: 32 bytes as 43 base64url characters.
 export async function generateKey(): Promise<string> {
-  return "temporary";
+  const key = await crypto.subtle.generateKey({ name: algorithm, length: 256 }, true, [
+    "encrypt",
+    "decrypt",
+  ]);
+  const raw = await crypto.subtle.exportKey("raw", key);
+  return toBase64url(new Uint8Array(raw));
 }
 
-export async function importKey(_encodedKey: string): Promise<RoomKey> {
-  return { temporary: true };
+// Throws on anything that is not exactly the encoding generateKey returns. atob also accepts
+// whitespace, padding, "+" and "/", so the decoded bytes must encode back to the same text.
+export async function importKey(encodedKey: string): Promise<RoomKey> {
+  const raw = fromBase64url(encodedKey);
+  if (raw.length !== keyLengthBytes || toBase64url(raw) !== encodedKey) {
+    throw new Error("Invalid room key");
+  }
+  return crypto.subtle.importKey("raw", raw, { name: algorithm }, false, ["encrypt", "decrypt"]);
 }
 
-export async function encrypt(
-  _key: RoomKey,
-  text: string,
-): Promise<EncryptedText> {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  return {
-    ciphertext: toBase64url(new TextEncoder().encode(text)),
-    iv: toBase64url(iv),
-  };
+// A new random IV for every message. Reusing an IV with the same key breaks AES-GCM.
+export async function encrypt(key: RoomKey, text: string): Promise<EncryptedText> {
+  const iv = crypto.getRandomValues(new Uint8Array(ivLengthBytes));
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: algorithm, iv },
+    key,
+    new TextEncoder().encode(text),
+  );
+  return { ciphertext: toBase64url(new Uint8Array(ciphertext)), iv: toBase64url(iv) };
 }
 
-// Throws when the data cannot be decoded, as real decryption throws on a bad key or tag.
-export async function decrypt(
-  _key: RoomKey,
-  { ciphertext }: EncryptedText,
-): Promise<string> {
-  return new TextDecoder("utf-8", { fatal: true }).decode(
+// Throws on a wrong key or tampered data, because the AES-GCM tag check fails.
+export async function decrypt(key: RoomKey, { ciphertext, iv }: EncryptedText): Promise<string> {
+  const plain = await crypto.subtle.decrypt(
+    { name: algorithm, iv: fromBase64url(iv) },
+    key,
     fromBase64url(ciphertext),
   );
+  return new TextDecoder("utf-8", { fatal: true }).decode(plain);
 }
