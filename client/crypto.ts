@@ -30,6 +30,12 @@ function fromBase64url(text: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
+// crypto.subtle exists only in a secure context (HTTPS or localhost). Over plain HTTP,
+// for example a LAN IP, it is undefined and nothing here can work.
+export function isEncryptionAvailable(): boolean {
+  return globalThis.crypto?.subtle !== undefined;
+}
+
 // Returns the key encoded for the link fragment: 32 bytes as 43 base64url characters.
 export async function generateKey(): Promise<string> {
   const key = await crypto.subtle.generateKey({ name: algorithm, length: 256 }, true, [

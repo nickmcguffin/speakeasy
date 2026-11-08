@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { isEncryptionAvailable } from "./crypto";
 import { type CreatedRoom, HomePage } from "./HomePage";
 import { RoomPage } from "./RoomPage";
 
@@ -28,6 +29,16 @@ export function App() {
     history.pushState(null, "", `/r/${roomId}#${encodedKey}`);
     setCurrent(readLocation());
   };
+
+  // Checked before both screens: a room cannot be created or read without Web Crypto.
+  if (!isEncryptionAvailable()) {
+    return (
+      <main>
+        <h1>This browser cannot encrypt messages</h1>
+        <p>Encryption needs a secure connection. Open the link with https:// and try again.</p>
+      </main>
+    );
+  }
 
   const roomMatch = roomPathPattern.exec(current.pathname);
   if (roomMatch) {
