@@ -4,27 +4,37 @@ import { RoomPage } from "./RoomPage";
 
 const roomPathPattern = /^\/r\/([^/]+)\/?$/;
 
-export function App() {
-  const [pathname, setPathname] = useState(location.pathname);
+function readLocation() {
+  return { pathname: location.pathname, hash: location.hash };
+}
 
-  // Back and forward buttons change the URL without a page load.
+export function App() {
+  const [current, setCurrent] = useState(readLocation);
+
+  // Back and forward buttons change the URL without a page load. Editing only the fragment
+  // (the key) in the address bar does not reload the page either, so listen for that too.
   useEffect(() => {
-    const handlePopState = () => setPathname(location.pathname);
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
+    const handleChange = () => setCurrent(readLocation());
+    window.addEventListener("popstate", handleChange);
+    window.addEventListener("hashchange", handleChange);
+    return () => {
+      window.removeEventListener("popstate", handleChange);
+      window.removeEventListener("hashchange", handleChange);
+    };
   }, []);
 
   // The key travels only in the fragment, which browsers never send to the server.
   const handleRoomCreated = ({ roomId, encodedKey }: CreatedRoom) => {
-    const roomPath = `/r/${roomId}`;
-    history.pushState(null, "", `${roomPath}#${encodedKey}`);
-    setPathname(roomPath);
+    history.pushState(null, "", `/r/${roomId}#${encodedKey}`);
+    setCurrent(readLocation());
   };
 
-  const roomMatch = roomPathPattern.exec(pathname);
+  const roomMatch = roomPathPattern.exec(current.pathname);
   if (roomMatch) {
     const roomId = roomMatch[1];
-    return <RoomPage key={roomId} roomId={roomId} />;
+    const encodedKey = current.hash.slice(1);
+    // A new room or a new key starts a fresh room screen and connection.
+    return <RoomPage key={`${roomId}#${encodedKey}`} roomId={roomId} encodedKey={encodedKey} />;
   }
   return <HomePage onRoomCreated={handleRoomCreated} />;
 }

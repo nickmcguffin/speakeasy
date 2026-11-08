@@ -3,7 +3,8 @@ import { ChatRoom } from "./ChatRoom";
 import { importKey, type RoomKey } from "./crypto";
 import { NamePrompt, readStoredName } from "./NamePrompt";
 
-type RoomStatus = "loading" | "found" | "not-found" | "failed";
+type RoomStatus = "loading" | "incomplete-link" | "found" | "not-found" | "failed";
+type LoadedRoom = { status: RoomStatus; roomKey: RoomKey | null };
 
 async function fetchRoomStatus(roomId: string): Promise<RoomStatus> {
   try {
@@ -17,39 +18,59 @@ async function fetchRoomStatus(roomId: string): Promise<RoomStatus> {
   }
 }
 
-export function RoomPage({ roomId }: { roomId: string }) {
-  const [status, setStatus] = useState<RoomStatus>("loading");
-  const [roomKey, setRoomKey] = useState<RoomKey | null>(null);
+// The key is imported before the room lookup, so a link without a usable key never
+// contacts the room or joins it.
+async function loadRoom(roomId: string, encodedKey: string): Promise<LoadedRoom> {
+  let roomKey: RoomKey;
+  try {
+    roomKey = await importKey(encodedKey);
+  } catch {
+    return { status: "incomplete-link", roomKey: null };
+  }
+  return { status: await fetchRoomStatus(roomId), roomKey };
+}
+
+type RoomPageProps = { roomId: string; encodedKey: string };
+
+export function RoomPage({ roomId, encodedKey }: RoomPageProps) {
+  // The key lives only in this state and in the URL. It is never stored or sent.
+  const [room, setRoom] = useState<LoadedRoom>({ status: "loading", roomKey: null });
   const [displayName, setDisplayName] = useState(readStoredName);
 
   useEffect(() => {
     let isCurrent = true;
-    // The key comes from the link fragment. The temporary crypto module ignores its value.
-    Promise.all([fetchRoomStatus(roomId), importKey(location.hash.slice(1))]).then(([result, key]) => {
+    loadRoom(roomId, encodedKey).then((result) => {
       if (isCurrent) {
-        setRoomKey(key);
-        setStatus(result);
+        setRoom(result);
       }
     });
     return () => {
       isCurrent = false;
     };
-  }, [roomId]);
+  }, [roomId, encodedKey]);
 
-  if (status === "loading") {
+  if (room.status === "loading") {
     return <p>Loading room...</p>;
   }
-  if (status === "not-found") {
+  if (room.status === "incomplete-link") {
+    return (
+      <main>
+        <h1>This link is incomplete</h1>
+        <p>The key that unlocks the messages is missing or damaged. Ask the person who shared it for the full link.</p>
+      </main>
+    );
+  }
+  if (room.status === "not-found") {
     return <p>Room not found</p>;
   }
-  if (status === "failed" || !roomKey) {
+  if (room.status === "failed" || !room.roomKey) {
     return <p role="alert">Could not load the room. Reload the page to try again.</p>;
   }
   return (
     <main>
       <h1>Room {roomId}</h1>
       {displayName ? (
-        <ChatRoom roomId={roomId} displayName={displayName} roomKey={roomKey} />
+        <ChatRoom roomId={roomId} displayName={displayName} roomKey={room.roomKey} />
       ) : (
         <NamePrompt onSubmit={setDisplayName} />
       )}
