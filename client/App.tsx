@@ -1,35 +1,29 @@
 import { useEffect, useState } from "react";
-import { io, type Socket } from "socket.io-client";
-import type { SocketEvents } from "../shared/types.js";
+import { HomePage } from "./HomePage";
+import { RoomPage } from "./RoomPage";
 
-type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected";
-
-const connectionLabels: Record<ConnectionState, string> = {
-  connecting: "Connecting",
-  connected: "Connected",
-  reconnecting: "Reconnecting",
-  disconnected: "Disconnected",
-};
+const roomPathPattern = /^\/r\/([^/]+)\/?$/;
 
 export function App() {
-  const [connection, setConnection] = useState<ConnectionState>("connecting");
+  const [pathname, setPathname] = useState(location.pathname);
 
+  // Back and forward buttons change the URL without a page load.
   useEffect(() => {
-    const socket: Socket<SocketEvents, SocketEvents> = io();
-
-    // socket.active is true while Socket.IO keeps retrying, false once it has given up.
-    const handleConnectionLost = () => {
-      setConnection(socket.active ? "reconnecting" : "disconnected");
-    };
-
-    socket.on("connect", () => setConnection("connected"));
-    socket.on("disconnect", handleConnectionLost);
-    socket.on("connect_error", handleConnectionLost);
-
-    return () => {
-      socket.disconnect();
-    };
+    const handlePopState = () => setPathname(location.pathname);
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  return <p>{connectionLabels[connection]}</p>;
+  const handleRoomCreated = (roomId: string) => {
+    const roomPath = `/r/${roomId}`;
+    history.pushState(null, "", roomPath);
+    setPathname(roomPath);
+  };
+
+  const roomMatch = roomPathPattern.exec(pathname);
+  if (roomMatch) {
+    const roomId = roomMatch[1];
+    return <RoomPage key={roomId} roomId={roomId} />;
+  }
+  return <HomePage onRoomCreated={handleRoomCreated} />;
 }
