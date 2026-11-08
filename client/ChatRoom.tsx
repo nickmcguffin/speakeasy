@@ -58,9 +58,9 @@ function joinErrorText(error: ErrorCode) {
     : "Could not join the room. Reload the page to try again.";
 }
 
-type ChatRoomProps = { roomId: string; displayName: string; roomKey: RoomKey };
+type ChatRoomProps = { roomId: string; displayName: string; roomKey: RoomKey; browserToken: string };
 
-export function ChatRoom({ roomId, displayName, roomKey }: ChatRoomProps) {
+export function ChatRoom({ roomId, displayName, roomKey, browserToken }: ChatRoomProps) {
   const [state, dispatch] = useReducer(roomReducer, initialRoomState);
   const [joinError, setJoinError] = useState<ErrorCode | null>(null);
   const [draft, setDraft] = useState("");
@@ -75,7 +75,9 @@ export function ChatRoom({ roomId, displayName, roomKey }: ChatRoomProps) {
   }, [state.messages]);
 
   useEffect(() => {
-    const socket: ChatSocket = io();
+    // closeOnBeforeunload closes the connection itself when the tab closes or refreshes, so the
+    // server is told even when the browser's own close would be lost on the way.
+    const socket: ChatSocket = io({ closeOnBeforeunload: true });
     socketRef.current = socket;
 
     // Runs on the first connect and on every reconnect, because a new server socket is in no room.
@@ -85,6 +87,7 @@ export function ChatRoom({ roomId, displayName, roomKey }: ChatRoomProps) {
         const result = await socket.timeout(ackTimeoutMs).emitWithAck("room:join", {
           roomId,
           displayName,
+          browserToken,
           since: lastMessageIdRef.current,
         });
         if (!result.ok) {
@@ -93,7 +96,7 @@ export function ChatRoom({ roomId, displayName, roomKey }: ChatRoomProps) {
         }
         setJoinError(null);
         dispatch({ type: "received", messages: await decryptMessages(roomKey, result.messages) });
-        dispatch({ type: "connection", connection: "connected" });
+        dispatch({ type: "joined", presenceKey: result.presenceKey });
       } catch {
         setJoinError("SERVER_ERROR");
       }
@@ -112,11 +115,13 @@ export function ChatRoom({ roomId, displayName, roomKey }: ChatRoomProps) {
     socket.on("disconnect", handleConnectionLost);
     socket.on("connect_error", handleConnectionLost);
     socket.on("message:new", handleNewMessage);
+    // Replaces the whole list. After a disconnect the old list stays until this arrives again.
+    socket.on("room:presence", (participants) => dispatch({ type: "presence", participants }));
 
     return () => {
       socket.disconnect();
     };
-  }, [roomId, displayName, roomKey]);
+  }, [roomId, displayName, roomKey, browserToken]);
 
   // Used for the first send and for Retry. A retry reuses the stored clientId, ciphertext and iv,
   // so the server can recognise it and store the message only once.
@@ -190,6 +195,22 @@ export function ChatRoom({ roomId, displayName, roomKey }: ChatRoomProps) {
       <p>Joined as {displayName}</p>
       <p>{connectionLabels[state.connection]}</p>
       {joinError && <p role="alert">{joinErrorText(joinError)}</p>}
+
+      {state.participants.length > 0 && (
+        <section aria-label="People in this room">
+          <p>
+            {state.participants.length} {state.participants.length === 1 ? "person" : "people"} here
+          </p>
+          <ul>
+            {state.participants.map((participant) => (
+              <li key={participant.presenceKey}>
+                {participant.name}
+                {participant.presenceKey === state.presenceKey && " (you)"}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <ol aria-label="Messages" aria-live="polite">
         {state.messages.map((message) => (
