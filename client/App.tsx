@@ -1,29 +1,51 @@
 import { useEffect, useState } from "react";
-import { HomePage } from "./HomePage";
+import { isEncryptionAvailable } from "./crypto";
+import { type CreatedRoom, HomePage } from "./HomePage";
 import { RoomPage } from "./RoomPage";
 
 const roomPathPattern = /^\/r\/([^/]+)\/?$/;
 
-export function App() {
-  const [pathname, setPathname] = useState(location.pathname);
+function readLocation() {
+  return { pathname: location.pathname, hash: location.hash };
+}
 
-  // Back and forward buttons change the URL without a page load.
+export function App() {
+  const [current, setCurrent] = useState(readLocation);
+
+  // Back and forward buttons change the URL without a page load. Editing only the fragment
+  // (the key) in the address bar does not reload the page either, so listen for that too.
   useEffect(() => {
-    const handlePopState = () => setPathname(location.pathname);
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
+    const handleChange = () => setCurrent(readLocation());
+    window.addEventListener("popstate", handleChange);
+    window.addEventListener("hashchange", handleChange);
+    return () => {
+      window.removeEventListener("popstate", handleChange);
+      window.removeEventListener("hashchange", handleChange);
+    };
   }, []);
 
-  const handleRoomCreated = (roomId: string) => {
-    const roomPath = `/r/${roomId}`;
-    history.pushState(null, "", roomPath);
-    setPathname(roomPath);
+  // The key travels only in the fragment, which browsers never send to the server.
+  const handleRoomCreated = ({ roomId, encodedKey }: CreatedRoom) => {
+    history.pushState(null, "", `/r/${roomId}#${encodedKey}`);
+    setCurrent(readLocation());
   };
 
-  const roomMatch = roomPathPattern.exec(pathname);
+  // Checked before both screens: a room cannot be created or read without Web Crypto.
+  if (!isEncryptionAvailable()) {
+    return (
+      <main>
+        <h1>This browser cannot encrypt messages</h1>
+        <p>Encryption needs a secure connection. Open the link with https:// and try again.</p>
+      </main>
+    );
+  }
+
+  const roomMatch = roomPathPattern.exec(current.pathname);
   if (roomMatch) {
     const roomId = roomMatch[1];
-    return <RoomPage key={roomId} roomId={roomId} />;
+    const encodedKey = current.hash.slice(1);
+    // A new room or a new key starts a fresh room screen and connection.
+    return <RoomPage key={`${roomId}#${encodedKey}`} roomId={roomId} encodedKey={encodedKey} />;
   }
   return <HomePage onRoomCreated={handleRoomCreated} />;
 }
