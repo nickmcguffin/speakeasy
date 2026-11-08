@@ -1,18 +1,22 @@
 import { useState } from "react";
 import type { CreateRoomResponse } from "../shared/types.js";
+import { generateKey } from "./crypto";
 
 type CreateStatus = "idle" | "creating" | "failed";
+export type CreatedRoom = { roomId: string; encodedKey: string };
 
-async function createRoom(): Promise<string> {
+// The key is generated first and stays in the browser. The request carries no key.
+async function createRoom(): Promise<CreatedRoom> {
+  const encodedKey = await generateKey();
   const response = await fetch("/api/rooms", { method: "POST" });
   if (!response.ok) {
     throw new Error(`Create room failed with status ${response.status}`);
   }
   const body = (await response.json()) as CreateRoomResponse;
-  return body.roomId;
+  return { roomId: body.roomId, encodedKey };
 }
 
-export function HomePage({ onRoomCreated }: { onRoomCreated: (roomId: string) => void }) {
+export function HomePage({ onRoomCreated }: { onRoomCreated: (room: CreatedRoom) => void }) {
   const [status, setStatus] = useState<CreateStatus>("idle");
 
   const handleCreate = async () => {

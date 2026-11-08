@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { HomePage } from "./HomePage";
+import { type CreatedRoom, HomePage } from "./HomePage";
 import { RoomPage } from "./RoomPage";
 
 const roomPathPattern = /^\/r\/([^/]+)\/?$/;
@@ -14,9 +14,10 @@ export function App() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  const handleRoomCreated = (roomId: string) => {
+  // The key travels only in the fragment, which browsers never send to the server.
+  const handleRoomCreated = ({ roomId, encodedKey }: CreatedRoom) => {
     const roomPath = `/r/${roomId}`;
-    history.pushState(null, "", roomPath);
+    history.pushState(null, "", `${roomPath}#${encodedKey}`);
     setPathname(roomPath);
   };
 
