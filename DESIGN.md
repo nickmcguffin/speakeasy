@@ -75,10 +75,10 @@ The server serves the built client from `client/dist` whenever that folder exist
 1. Client generates the room key with `crypto.subtle.generateKey` (AES-GCM, 256 bits, extractable) and exports it to base64url.
 2. Client sends `POST /api/rooms`. The key is not in the request.
 3. Server makes an ID with `crypto.randomUUID()`, inserts it into `rooms`, and returns `{ roomId }`.
-4. Client navigates to `/r/:roomId#<key>` and shows the copy-link action. The copied link always includes the fragment.
+4. Client navigates to `/r/:roomId#<key>` with `history.pushState` and shows the copy-link action. The copied link always includes the fragment.
 
 ### Join a room
-1. Client reads the key from `location.hash` and imports it with `crypto.subtle.importKey`. If the key is missing or invalid, the client shows the "incomplete link" screen and stops.
+1. Client reads the key from `location.hash` and imports it with `crypto.subtle.importKey` (AES-GCM, not extractable, encrypt and decrypt only). The key must be exactly the 43 base64url characters that `generateKey` makes: 32 bytes, no padding, no `+` or `/`, no whitespace. If the key is missing or invalid, the client shows the "incomplete link" screen and stops, with no room lookup and no socket. Changing only the fragment in the address bar does not reload the page, so the client listens for `hashchange` and starts a fresh room screen with the new key.
 2. Client checks `GET /api/rooms/:roomId`. A 404 shows the "room not found" screen before the user types a name.
 3. Client gets the display name from local storage, or asks for it.
 4. Client emits `room:join { roomId, displayName }`.
@@ -183,7 +183,7 @@ type ChatMessage = Omit<EncryptedMessage, "ciphertext" | "iv"> & {
 
 Lengths are JavaScript string lengths (UTF-16 code units) on both sides. Failed checks return `INVALID_INPUT`.
 
-The server cannot read the text, so it can only limit the ciphertext size. 2,000 characters of UTF-8 is at most 8,000 bytes, plus a 16-byte tag, which is about 10,700 base64 characters. Socket.IO `maxHttpBufferSize` is set to 32 KB, so a larger packet closes the connection before any handler runs. The client then reconnects, and that message fails after its ack timeout.
+The server cannot read the text, so it can only limit the ciphertext size. 2,000 UTF-16 code units are at most 6,000 bytes of UTF-8 (3 bytes per unit, or 4 bytes per surrogate pair). With the 16-byte tag that is 6,016 bytes, or 8,022 base64url characters, well under 12,000. Socket.IO `maxHttpBufferSize` is set to 32 KB, so a larger packet closes the connection before any handler runs. The client then reconnects, and that message fails after its ack timeout.
 
 ## 5. Data model
 
@@ -231,8 +231,12 @@ type RoomState = {
 };
 ```
 
-- The room screen (`RoomPage`) imports the key once and passes it to the chat component as a prop. It is never written to local storage or sent anywhere.
-- Encryption code lives in one small module (`client/crypto.ts`) with four async functions: `generateKey`, `importKey`, `encrypt`, `decrypt`. The rest of the client does not call Web Crypto directly. **Until step 6 this module is a temporary stand-in that does not encrypt**: the "ciphertext" is the base64url UTF-8 text, and the IV is 12 random bytes.
+- `App` reads the encoded key from `location.hash` and passes it to the room screen (`RoomPage`). The room screen imports it once, before the room lookup, and passes the `CryptoKey` to the chat component as a prop. The key exists only in the URL and in memory. It is never written to local storage, session storage or logs, and never sent in a request.
+- Encryption code lives in one small module (`client/crypto.ts`) with four async functions, `generateKey`, `importKey`, `encrypt` and `decrypt`, plus `isEncryptionAvailable`. The rest of the client does not call Web Crypto directly.
+  - `generateKey` makes an extractable 256-bit AES-GCM key only to export its raw bytes as base64url for the link.
+  - `importKey` throws on any invalid input and returns a non-extractable key.
+  - `encrypt` uses a new 12-byte IV from `crypto.getRandomValues` for every call and returns base64url ciphertext (including the 16-byte tag) and IV.
+  - `decrypt` uses the IV stored with the message and throws on a wrong key or tampered data. The chat screen catches this per message and shows the placeholder.
 - The display name comes from local storage, or from a name prompt that saves it. Storage access is wrapped in try/catch, so a browser that blocks storage still works for the visit.
 - `connected` means the socket is connected and the `room:join` ack has arrived. Until then the state stays `connecting` or `reconnecting`, so nothing is sent before the server knows the room.
 - Confirmed messages are merged by id and sorted by id. A confirmed message removes the pending message with the same `clientId`, whether it came from the send ack or from a rejoin.
@@ -246,7 +250,8 @@ type RoomState = {
 | Failure | Behaviour |
 |---|---|
 | Unknown room | 404 on the room check, "room not found" screen |
-| Missing or invalid key in the link | "This link is incomplete" screen, with a hint to ask for the full link |
+| Missing or invalid key in the link | "This link is incomplete" screen, with a hint to ask for the full link. No room lookup and no join |
+| No Web Crypto (not a secure context) | "This browser cannot encrypt messages" screen on every route, with no requests to the API or socket |
 | Message fails to decrypt | Shown as "Unable to decrypt this message", other messages still show |
 | Invalid input | Ack with `INVALID_INPUT`, message marked failed with retry |
 | Message over 2,000 characters | Rejected in the client with an inline message. The draft is kept and nothing is sent |
@@ -260,7 +265,7 @@ type RoomState = {
 
 ## 8. Security notes and gotchas
 
-- **Secure context:** Web Crypto (`crypto.subtle`) works only on HTTPS or `localhost`. Testing on a phone through the dev server's LAN IP fails, because `crypto.subtle` is undefined there. Test on the deployed HTTPS URL, or use a tunnel.
+- **Secure context:** Web Crypto (`crypto.subtle`) works only on HTTPS or `localhost`. Testing on a phone through the dev server's LAN IP fails, because `crypto.subtle` is undefined there. The app checks for it before showing any screen and shows "This browser cannot encrypt messages" instead. Test on the deployed HTTPS URL, or use a tunnel.
 - **Keep the fragment:** navigation after room creation must include the hash. Any redirect or rewrite must keep it.
 - **Unique IV per message:** never reuse an IV with the same key. Generate 12 random bytes for each message with `crypto.getRandomValues`.
 - **Logging:** log connects, joins and errors with the socket ID and room ID only. Never log the URL fragment, ciphertext or display names.

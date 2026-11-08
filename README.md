@@ -60,8 +60,11 @@ Due to my current role and having to cover someone on leave for the next week, I
 ## Encryption
 Messages are end-to-end encrypted, because "private" should mean that the server cannot read them either.
 
-- **Key in the link.** When a user creates a room, the browser generates a random AES-GCM key with the Web Crypto API. The key goes in the URL fragment: `/r/<roomId>#<key>`. Browsers never send the fragment to the server.
-- **Encrypt in the browser.** Each client encrypts messages before it sends them and decrypts them when they arrive. The server stores and relays only ciphertext and a per-message IV.
+- **Key in the link.** When a user creates a room, the browser generates a random 256-bit AES-GCM key with the Web Crypto API, before it asks the server for a room. The key goes in the URL fragment: `/r/<roomId>#<key>`. Browsers never send the fragment to the server.
+- **Key in memory only.** The key is never stored in local or session storage, logged, or sent in a request.
+- **Encrypt in the browser.** Each client encrypts messages before it sends them and decrypts them when they arrive. Every message gets a new random 12-byte IV. The server stores and relays only ciphertext and the IV.
+- **Missing or wrong key.** A link without a valid key shows "This link is incomplete" and does not join. A message that fails to decrypt (wrong key or changed data) shows "Unable to decrypt this message", and the other messages still show.
+- **Secure context.** Web Crypto works only on HTTPS or `localhost`. Elsewhere the app shows "This browser cannot encrypt messages".
 - **Result.** The server, the database and the host cannot read messages. Only people with the full link can.
 
 I chose this over server-side encryption at rest, because a key stored next to the database protects against a database leak but not against the server itself.
