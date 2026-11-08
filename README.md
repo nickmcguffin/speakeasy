@@ -3,8 +3,9 @@
 ## What it is
 An MVP for a very simple private chat application. A user creates a room, shares the link, and other people use the link to join and chat in real time. Messages are end-to-end encrypted.
 
-## Live demo and repo
-TODO
+## Live demo
+View the live demo [here](https://speakeasy-4u7o.onrender.com/).
+
 
 ## Assumptions
 - "Private" means that rooms are not listed anywhere, and each room link contains a long random ID that nobody can guess. Users can only join if they have access to a link.
@@ -54,6 +55,7 @@ Due to my current role and having to cover someone on leave for the next week, I
 - **Own WebSocket server instead of a managed real-time service.** Slightly more work, but it shows how the real-time part works and keeps everything in one codebase.
 - **Database instead of in-memory storage.** If rooms were only in memory, a restart would delete every room and break every shared link.
 - **Free hosting tier.** No cost, but the server sleeps when nobody uses it.
+- **Render deploys with minimal downtime.** Open pages reconnect automatically when the new version goes live.
 
 ## Encryption
 Messages are end-to-end encrypted, because "private" should mean that the server cannot read them either.
@@ -108,6 +110,8 @@ Set `DATABASE_URL` in `.env` to a Postgres connection string (for example, from 
 ```sh
 npm run dev
 ```
+<b>Note:</b> On a fresh clone, the server prints "Client build not found ... Serving API only". This is expected in dev, because Vite serves the page on port 5173. Running `npm run build` will build the required `client/dist/` files.
+
 Open http://localhost:5173. Vite serves the client and proxies `/api` and `/socket.io` to the server on port 3000. The server reloads when its files change.
 
 **Production build**
