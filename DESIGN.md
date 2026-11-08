@@ -380,7 +380,9 @@ All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
 ### Layout
 - Home: one narrow, left-aligned column. App name, one line about what it does, an optional room name field, and "Create a room".
 - Room: header (room name, connection status, copy link), message list, composer bar fixed at the bottom.
-- Share panel at the top of the message list while the room has no messages.
+- Room name: optional field on the home page, labelled "Room name (optional)". The room heading and the tab title show it, or "Untitled room".
+- Participant list: a narrow side panel on desktop. On mobile, a "3 here" button in the header opens it.
+- Share panel at the top of the message list while the room has no messages. The share button should sit elsewhere after messages have been sent.
 - Your messages on the right in `accent`. Other people's messages on the left in `surface`. The name shows only on the first message in a group from the same person.
 
 ### Components
