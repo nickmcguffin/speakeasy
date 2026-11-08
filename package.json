@@ -7,7 +7,7 @@
     "node": "26.x"
   },
   "scripts": {
-    "dev": "concurrently --names client,server \"vite\" \"tsx watch --clear-screen=false server/index.ts\"",
+    "dev": "concurrently --names client,server \"vite\" \"tsx watch --clear-screen=false --env-file-if-exists=.env server/index.ts\"",
     "build": "tsc -p client && vite build && tsc -p server",
     "start": "node dist/server/index.js"
   },
