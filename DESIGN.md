@@ -56,8 +56,9 @@ https://<host>/r/<roomId>#<key>
 ### Client routes
 | Path | Screen |
 |---|---|
-| `/` | Home: "Create room" button |
+| `/` | Home: optional room name and "Create a room" |
 | `/r/:roomId#key` | Room: name prompt (first visit), then chat |
+| Any other path | "Page not found" screen, with a link to the home page |
 
 Two routes only, so the client reads `location.pathname` and `location.hash`, and uses `history.pushState`. No router library unless more routes were added (user admin, history etc.). 
 
@@ -290,6 +291,8 @@ type RoomState = {
 | Failure | Behaviour |
 |---|---|
 | Unknown room | 404 on the room check, "room not found" screen |
+| Room check fails (server error or no connection) | "Could not load the room" screen. Try again repeats the room lookup |
+| Unknown path | "Page not found" screen. The server also answers with status 404 |
 | Missing or invalid key in the link | "This link is incomplete" screen, with a hint to ask for the full link. No room lookup and no join |
 | No Web Crypto (not a secure context) | "This browser cannot encrypt messages" screen on every route, with no requests to the API or socket |
 | Message fails to decrypt | Shown as "Unable to decrypt this message", other messages still show |
@@ -373,7 +376,7 @@ Light and dark mode follow the system setting.
 All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
 
 ### Type
-- Instrument Sans for all text, self-hosted (no request to a font service, because the app is about privacy).
+- Instrument Sans for all text, self-hosted (no request to a font service, because the app is about privacy). The `@fontsource-variable/instrument-sans` package provides the variable font (weights 400 to 700), and Vite bundles its files with the client.
 - Monospace only for the room link in the share panel, because the key is a token that users must see exactly.
 - Hierarchy from size and weight. Sentence case. No all-caps labels.
 
@@ -385,10 +388,16 @@ All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
 - Share panel at the top of the message list while the room has no messages. The share button should sit elsewhere after messages have been sent.
 - Your messages on the right in `accent`. Other people's messages on the left in `surface`. The name shows only on the first message in a group from the same person.
 
+### Styles
+- One stylesheet, `client/styles.css`, with the colour tokens as CSS custom properties. Dark values apply under `prefers-color-scheme: dark`. No CSS framework.
+- Base styles for the body, headings, buttons, text fields, focus and errors. Buttons are primary (`accent`) by default, and `secondary` buttons have a `field-border` outline. Text fields have a `field-border` edge, which turns `danger` while the field is invalid. Every control shows a 2px `focus` outline on `:focus-visible`. Inline errors use `danger`.
+- The home page, the name prompt and the state screens share one narrow, left-aligned column (`.page`).
+- The favicon (`client/public/favicon.svg`) is a speech bubble with a keyhole in `accent`.
+
 ### Components
 - Message field: pill shape, `field-border`, 2px `focus` ring when focused.
 - Send button: round, `accent`, send icon, `aria-label="Send"`.
-- One state screen component (title, explanation, optional action) for: incomplete link, room not found, page not found, cannot encrypt, could not load (with Retry).
+- One state screen component (`StateScreen`: title, one or two sentences, optional action button) for: incomplete link, room not found, page not found, cannot encrypt, could not load (with Try again). The text says what happened and what to do.
 - Connection status: small dot with text. Colour is never the only signal.
 
 ### Message states
@@ -397,7 +406,7 @@ All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
 - Wrong key: if the history has messages and none decrypt, a warning banner and sending is disabled.
 
 ### Motion
-One moment only: a short slide-in for new messages. None when the user prefers reduced motion.
+One moment only: a short slide-in for new messages. Controls also change colour with a 150 ms transition on hover. No motion at all when the user prefers reduced motion.
 
 ### Accessibility and mobile
 - Visible focus rings on all controls. Labels use `htmlFor`.
