@@ -109,6 +109,8 @@ The server serves the built client from `client/dist` whenever that folder exist
 | `GET /api/health` | `200 { ok: true }` (Render health check) |
 | Any other `/api` request | `404 { error: "NOT_FOUND" }` |
 
+The response bodies are typed in `shared/` (see "Shared types" below): `CreateRoomResponse`, `RoomResponse`, and `ErrorResponse` for every error. `POST /api/rooms` takes no request body.
+
 ### Socket.IO events
 Typed with Socket.IO's `ClientToServerEvents` and `ServerToClientEvents` generics. The types live in `shared/`.
 
@@ -141,6 +143,12 @@ type EncryptedMessage = {
 
 type ErrorCode = "ROOM_NOT_FOUND" | "NOT_FOUND" | "INVALID_INPUT" | "NOT_JOINED" | "SERVER_ERROR";
 
+// REST
+type ErrorResponse = { error: ErrorCode };
+type CreateRoomResponse = { roomId: string };                 // POST /api/rooms
+type RoomResponse = { roomId: string; createdAt: string };    // GET /api/rooms/:roomId, createdAt in ISO 8601
+
+// Socket.IO acks
 type JoinResult = { ok: true; messages: EncryptedMessage[] } | { ok: false; error: ErrorCode };
 type SendResult = { ok: true; message: EncryptedMessage } | { ok: false; error: ErrorCode };
 ```
