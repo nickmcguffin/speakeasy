@@ -136,7 +136,17 @@ function handleJoin(io: ChatServer, socket: ChatSocket) {
       socket.data.joinOrder = joinCount;
       console.log(`socket ${socket.id} joined room ${join.roomId}`);
 
-      reply({ ok: true, participantId, messages: await loadMessages(join.roomId, join.since) });
+      let messages: EncryptedMessage[];
+      try {
+        messages = await loadMessages(join.roomId, join.since);
+      } catch (error) {
+        // Leave before the error ack, so a failed join is not counted in presence and cannot send.
+        await socket.leave(join.roomId);
+        socket.data = {};
+        throw error;
+      }
+
+      reply({ ok: true, participantId, messages });
       await broadcastPresence(io, join.roomId);
     } catch (error) {
       console.error(`room:join failed for socket ${socket.id}: ${(error as Error).message}`);
