@@ -73,6 +73,7 @@ I chose this over server-side encryption at rest, because a key stored next to t
 - Display names and timestamps are not encrypted, so the server knows who spoke and when.
 - The server can only limit the size of the encrypted data, not check the message text.
 - No moderation, editing or deleting of messages.
+- After a very long disconnect, only the newest 200 missed messages load.
 
 ## How I used AI tools
 - TODO
