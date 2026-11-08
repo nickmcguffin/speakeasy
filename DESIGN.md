@@ -82,18 +82,21 @@ The server serves the built client from `client/dist` whenever that folder exist
 1. Client reads the key from `location.hash` and imports it with `crypto.subtle.importKey` (AES-GCM, not extractable, encrypt and decrypt only). The key must be exactly the 43 base64url characters that `generateKey` makes: 32 bytes, no padding, no `+` or `/`, no whitespace. If the key is missing or invalid, the client shows the "incomplete link" screen and stops, with no room lookup and no socket. Changing only the fragment in the address bar does not reload the page, so the client listens for `hashchange` and starts a fresh room screen with the new key.
 2. Client checks `GET /api/rooms/:roomId`. A 404 shows the "room not found" screen before the user types a name. Otherwise the client decrypts the room name with the key and shows it in the heading, with the tab title `<name> | Speakeasy`. A room with no name, or a name that does not decrypt (for example with a wrong key), shows "Untitled room" and the page works as normal. The title goes back to "Speakeasy" when the room screen closes.
 3. Client gets the display name from local storage, or asks for it.
-4. Client emits `room:join { roomId, displayName }`.
-5. Server validates and leaves any other room the socket was already in, then sends `room:presence` to that room. It puts the socket in the Socket.IO room and stores `roomId`, `displayName`, a new `participantId` (`crypto.randomUUID()`) and a join counter on `socket.data`. It acks with the `participantId` and the last 50 messages in ascending id order. It joins before it loads, so a message sent in between is not missed. A duplicate from that overlap is dropped by id on the client.
-6. After the ack, the server sends `room:presence` to everyone in the room (see "Presence").
-7. Client decrypts each message. A message that fails to decrypt shows as "Unable to decrypt this message".
+4. Client emits `room:join { roomId, displayName, browserToken }`. The browser token is described in "Presence".
+5. Server validates and leaves any other room the socket was already in, then sends `room:presence` to that room. It puts the socket in the Socket.IO room and stores `roomId`, `displayName`, `browserToken` and a join counter on `socket.data`. It joins before it loads, so a message sent in between is not missed. A duplicate from that overlap is dropped by id on the client.
+6. If loading the messages fails, the socket leaves the room and its join data is cleared before the `SERVER_ERROR` ack, so it is not counted in presence and cannot send.
+7. Otherwise the server acks with the browser's `presenceKey` and the last 50 messages in ascending id order, then sends `room:presence` to everyone in the room once.
+8. Client decrypts each message. A message that fails to decrypt shows as "Unable to decrypt this message".
 
 ### Presence
-1. `room:presence` carries the room's full participant list, `[{ participantId, name }]`, sorted by the join counter, so it is in join order. The server builds it from `fetchSockets()` on the Socket.IO room and counts only sockets with a `participantId`, which is set only by a successful join.
+1. `room:presence` carries the room's full participant list, `[{ presenceKey, name }]`, with one entry per browser. The server builds it from `fetchSockets()` on the Socket.IO room, counts only sockets with a `browserToken` (set only by a successful join), and groups them by that token. Entries are ordered by the earliest join among each browser's open connections, and show the name from the browser's latest join.
 2. The server sends it after every join, after a socket leaves a room to join a different one, and on `disconnect`. By `disconnect` the socket has already left its rooms, so the server uses `socket.data.roomId` to find the room, and the room's sockets are the ones that remain.
-3. Every join gets a new `participantId`, so two people with the same name are two entries, and a reconnect replaces the old entry instead of adding a second one. The client marks its own entry with "(you)" by matching the `participantId` from its join ack, never the name.
-4. The list holds display names, which are already plain text on the server (see Known limits). Names are never logged.
+3. **Browser token.** Each browser has a random token, made once with `crypto.randomUUID()` and kept in local storage as `speakeasy:browserToken`. All its tabs share it, so a second tab, a duplicated tab or a refresh is the same entry, and a refresh whose old connection lingers on the server (when a tunnel or proxy loses the browser's close) never shows twice. The server never disconnects a socket because of the token. A browser leaves the list only when its last connection in the room closes. Without storage, the page uses an in-memory token, so each tab of that browser is its own entry.
+4. **Presence key.** Clients never receive the token. Each entry has a `presenceKey`, the base64url SHA-256 of `${roomId}:${browserToken}`: stable for the browser in that room, different in every room, and it does not reveal the token. The join ack returns the browser's own `presenceKey`, and the client marks its entry with "(you)" by it, never by the name. Two browsers with the same name are two entries.
+5. The list holds display names, which are already plain text on the server (see Known limits). Names are never logged.
+6. The client sets Socket.IO's `closeOnBeforeunload`, so a closing or refreshing tab closes its own connection instead of relying on the browser.
 
-Presence follows the server's view of the connection, so a person whose network drops without a clean close stays listed until the ping timeout (see section 9).
+Presence follows the server's view of the connection, so a browser whose network drops without a clean close stays listed until the ping timeout (see section 9). A browser that leaves the list and comes back, or whose earliest open tab closes, can move down the list.
 
 ### Send a message
 1. Client checks the plain text length, makes a `clientId` (UUID), and adds the message to the list with status `sending`.
@@ -106,7 +109,7 @@ Presence follows the server's view of the connection, so a person whose network 
 
 ### Reconnect
 1. Socket.IO reconnects automatically. The new server-side socket is not in any room. When the server saw the old connection close, it has already sent the room a list without it.
-2. On `connect`, the client emits `room:join` again with `since` set to the ID of the last confirmed message it has. The rejoin gets a new `participantId`.
+2. On `connect`, the client emits `room:join` again with `since` set to the ID of the last confirmed message it has, and the same browser token, so it keeps the same entry.
 3. Server acks with only the messages after `since`, at most 200. If more than 200 were missed, it returns the newest 200, so the current conversation shows and the oldest missed messages are skipped. The client decrypts them and merges them by message ID.
 4. While disconnected, the client keeps showing its last participant list. The next `room:presence` after the rejoin replaces it.
 
@@ -129,7 +132,7 @@ Typed with Socket.IO's `ClientToServerEvents`, `ServerToClientEvents` and `Socke
 
 **Client to server**
 ```ts
-type JoinPayload = { roomId: string; displayName: string; since?: number };
+type JoinPayload = { roomId: string; displayName: string; browserToken: string; since?: number };
 type SendPayload = { clientId: string; ciphertext: string; iv: string };
 
 "room:join": (payload: JoinPayload, ack: (result: JoinResult) => void) => void
@@ -144,7 +147,7 @@ type SendPayload = { clientId: string; ciphertext: string; iv: string };
 
 **Socket data**, set by a successful `room:join`:
 ```ts
-type SocketData = { roomId: string; displayName: string; participantId: string; joinOrder: number };
+type SocketData = { roomId: string; displayName: string; browserToken: string; joinOrder: number };
 ```
 
 - Every handler acks, with `SERVER_ERROR` on any exception. If the client sends no ack function, the server skips the reply instead of crashing.
@@ -179,9 +182,9 @@ type RoomResponse = {                                                  // GET /a
 };
 
 // Socket.IO
-type Participant = { participantId: string; name: string };  // one joined socket
+type Participant = { presenceKey: string; name: string };  // one browser, however many tabs
 type JoinResult =
-  | { ok: true; participantId: string; messages: EncryptedMessage[] }
+  | { ok: true; presenceKey: string; messages: EncryptedMessage[] }
   | { ok: false; error: ErrorCode };
 type SendResult = { ok: true; message: EncryptedMessage } | { ok: false; error: ErrorCode };
 ```
@@ -201,6 +204,7 @@ type ChatMessage = Omit<EncryptedMessage, "ciphertext" | "iv"> & {
 | room name | client | trimmed, at most 60 characters. Empty means no name |
 | `roomId` | server | UUID format (`INVALID_INPUT`), and must exist (`ROOM_NOT_FOUND`) |
 | `displayName` | server | trimmed, 1 to 32 characters |
+| `browserToken` | server | required, UUID format |
 | `since` | server | optional, non-negative integer |
 | `clientId` | server | UUID format |
 | `iv` | server | base64url without padding, exactly 16 characters, which is 12 bytes |
@@ -260,7 +264,7 @@ type RoomState = {
   pending: { clientId: string; body: string; status: MessageStatus;
              ciphertext?: string; iv?: string }[];
   participants: Participant[];              // the last room:presence list
-  participantId: string | null;             // this client's entry, from the latest join ack
+  presenceKey: string | null;               // this browser's entry, from the latest join ack
 };
 ```
 
@@ -277,7 +281,8 @@ type RoomState = {
 - The send button is disabled when the connection is not `connected`. Enter sends and Shift+Enter adds a line.
 - Message text is rendered as React text with `white-space: pre-wrap`, never as HTML.
 - Socket.IO buffers emits while disconnected by default. The disabled button prevents most of this, and the `clientId` makes any late delivery safe.
-- Each `room:presence` replaces the whole participant list. The join ack sets `participantId` (and `connected`) in a separate action, so the two can arrive in either order. "(you)" shows on the entry whose `participantId` matches.
+- Each `room:presence` replaces the whole participant list. The join ack sets `presenceKey` (and `connected`) in a separate action, so the two can arrive in either order. "(you)" shows on the entry whose `presenceKey` matches.
+- `RoomPage` gets the browser token from local storage (`speakeasy:browserToken`), or makes and stores one, and passes it to the chat component. Storage access is wrapped in try/catch, with an in-memory token as the fallback. Local storage holds only the display name and this token. Session storage is not used.
 - On a disconnect the list is kept as it was, with "(you)" still on the old entry, until the first `room:presence` after the rejoin. The room screen shows the count and the names, and nothing before the first list arrives.
 
 ## 7. Error handling
@@ -311,7 +316,7 @@ type RoomState = {
 - **Load:** one small Node process can hold thousands of idle sockets. Demo traffic uses a very small part of that. Encryption runs in the browser, so it adds no server load.
 - **Database:** Neon free tier is enough. Compute scales to zero when idle and resumes quickly.
 - **Single instance:** Socket.IO rooms live in process memory, so a second instance would not see the first instance's rooms. This is accepted for the MVP.
-- **Presence after a network loss:** a closed tab or a clean disconnect leaves the list at once. A user who loses the network without a clean close (Wi-Fi drops, laptop sleeps) stays in the list until the Socket.IO ping timeout. The server uses the defaults, a ping every 25 seconds and 20 seconds to answer, so that is between about 20 and 45 seconds. In testing it was 30 and 43 seconds. If that browser reconnects on a new connection first, for example after switching networks, the same person shows twice until the old connection times out. Shorter ping settings would shorten this, at the cost of more traffic and more false disconnects on slow mobile networks.
+- **Presence after a network loss:** a closed tab or a clean disconnect leaves the list at once, as soon as it was the browser's last connection in the room. With `closeOnBeforeunload`, this also holds through a tunnel that loses the browser's close. A user who loses the network without a clean close (Wi-Fi drops, laptop sleeps) stays in the list until the Socket.IO ping timeout. The server uses the defaults, a ping every 25 seconds and 20 seconds to answer, so that is between about 20 and 45 seconds. In testing it was 30 and 43 seconds. If that browser reconnects on a new connection first, for example after a refresh through a tunnel or a network switch, both connections share its browser token, so it stays one entry. The old connection is dropped at the ping timeout without any visible change. Shorter ping settings would shorten this, at the cost of more traffic and more false disconnects on slow mobile networks.
 - **Monitoring:** Render logs and the `/api/health` check.
 
 ## 10. Trade-offs
