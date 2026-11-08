@@ -75,7 +75,9 @@ export function ChatRoom({ roomId, displayName, roomKey }: ChatRoomProps) {
   }, [state.messages]);
 
   useEffect(() => {
-    const socket: ChatSocket = io();
+    // closeOnBeforeunload closes the connection itself when the tab closes or refreshes, so the
+    // server is told even when the browser's own close would be lost on the way.
+    const socket: ChatSocket = io({ closeOnBeforeunload: true });
     socketRef.current = socket;
 
     // Runs on the first connect and on every reconnect, because a new server socket is in no room.
