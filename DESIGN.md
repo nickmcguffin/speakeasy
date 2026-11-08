@@ -82,22 +82,22 @@ The server serves the built client from `client/dist` whenever that folder exist
 2. Client checks `GET /api/rooms/:roomId`. A 404 shows the "room not found" screen before the user types a name.
 3. Client gets the display name from local storage, or asks for it.
 4. Client emits `room:join { roomId, displayName }`.
-5. Server validates, puts the socket in the Socket.IO room, stores `roomId` and `displayName` on `socket.data`, and acks with the last 50 messages.
+5. Server validates, leaves any room the socket was already in, puts the socket in the Socket.IO room, stores `roomId` and `displayName` on `socket.data`, and acks with the last 50 messages in ascending id order. It joins before it loads, so a message sent in between is not missed. A duplicate from that overlap is dropped by id on the client.
 6. Client decrypts each message. A message that fails to decrypt shows as "Unable to decrypt this message".
 
 ### Send a message
 1. Client checks the plain text length, makes a `clientId` (UUID), and adds the message to the list with status `sending`.
 2. Client generates a random 12-byte initialisation vector (nonce) and encrypts the text with `crypto.subtle.encrypt`.
-3. Client emits `message:send { clientId, ciphertext, iv }` with an ack timeout.
-4. Server validates the shape and size and inserts the message. The author name comes from `socket.data`, not from the payload.
+3. Client emits `message:send { clientId, ciphertext, iv }` with a 10-second ack timeout.
+4. Server checks that the socket has joined (`NOT_JOINED` if not), validates the shape and size, and inserts with `ON CONFLICT (room_id, client_id) DO NOTHING`. The author name comes from `socket.data`, not from the payload.
 5. Server acks the sender with the stored message. The client replaces the pending message, and the status becomes `sent`.
-6. Server broadcasts `message:new` to the other sockets in the room (`socket.to(roomId)`), so the sender does not receive a duplicate.
-7. If the ack times out or returns an error, the status becomes `failed` with a retry action. A retry sends the same `clientId` and the same ciphertext.
+6. Only when a row was inserted, the server broadcasts `message:new` to the other sockets in the room (`socket.to(roomId)`), so the sender does not receive a duplicate.
+7. If the ack times out or returns an error, the status becomes `failed` with a retry action. A retry sends the same `clientId`, ciphertext and IV. If the first attempt was stored, the insert hits the conflict, and the server selects the stored row, acks with it and does not broadcast again.
 
 ### Reconnect
 1. Socket.IO reconnects automatically. The new server-side socket is not in any room.
-2. On `connect`, the client emits `room:join` again with `since` set to the ID of the last message it has.
-3. Server acks with only the messages after `since`. The client decrypts them and merges them by message ID.
+2. On `connect`, the client emits `room:join` again with `since` set to the ID of the last confirmed message it has.
+3. Server acks with only the messages after `since`, at most 200. If more than 200 were missed, it returns the newest 200, so the current conversation shows and the oldest missed messages are skipped. The client decrypts them and merges them by message ID.
 
 ## 4. API contracts
 
@@ -112,21 +112,30 @@ The server serves the built client from `client/dist` whenever that folder exist
 The response bodies are typed in `shared/` (see "Shared types" below): `CreateRoomResponse`, `RoomResponse`, and `ErrorResponse` for every error. `POST /api/rooms` takes no request body.
 
 ### Socket.IO events
-Typed with Socket.IO's `ClientToServerEvents` and `ServerToClientEvents` generics. The types live in `shared/`.
+Typed with Socket.IO's `ClientToServerEvents`, `ServerToClientEvents` and `SocketData` generics. The types live in `shared/types.ts`.
 
 **Client to server**
 ```ts
-"room:join": (payload: { roomId: string; displayName: string; since?: number },
-              ack: (res: JoinResult) => void) => void
+type JoinPayload = { roomId: string; displayName: string; since?: number };
+type SendPayload = { clientId: string; ciphertext: string; iv: string };
 
-"message:send": (payload: { clientId: string; ciphertext: string; iv: string },
-                 ack: (res: SendResult) => void) => void
+"room:join": (payload: JoinPayload, ack: (result: JoinResult) => void) => void
+"message:send": (payload: SendPayload, ack: (result: SendResult) => void) => void
 ```
 
 **Server to client**
 ```ts
 "message:new": (message: EncryptedMessage) => void
 ```
+
+**Socket data**, set by a successful `room:join`:
+```ts
+type SocketData = { roomId: string; displayName: string };
+```
+
+- Every handler acks, with `SERVER_ERROR` on any exception. If the client sends no ack function, the server skips the reply instead of crashing.
+- The server treats every payload as unknown input and validates it, whatever the types say.
+- Logs contain socket IDs and room IDs only, never display names or message content.
 
 **Shared types**
 ```ts
@@ -164,13 +173,17 @@ type ChatMessage = Omit<EncryptedMessage, "ciphertext" | "iv"> & {
 | Field | Where | Rule |
 |---|---|---|
 | plain text body | client | trimmed, 1 to 2,000 characters |
-| `roomId` | server | UUID format, and must exist |
+| display name | client | trimmed, 1 to 32 characters |
+| `roomId` | server | UUID format (`INVALID_INPUT`), and must exist (`ROOM_NOT_FOUND`) |
 | `displayName` | server | trimmed, 1 to 32 characters |
+| `since` | server | optional, non-negative integer |
 | `clientId` | server | UUID format |
-| `iv` | server | base64url, decodes to exactly 12 bytes |
-| `ciphertext` | server | base64url, at most 12,000 characters |
+| `iv` | server | base64url without padding, exactly 16 characters, which is 12 bytes |
+| `ciphertext` | server | base64url without padding, 1 to 12,000 characters |
 
-The server cannot read the text, so it can only limit the ciphertext size. 2,000 characters of UTF-8 is at most 8,000 bytes, plus a 16-byte tag, which is about 10,700 base64 characters. Socket.IO `maxHttpBufferSize` is set to 32 KB, so large payloads are rejected before validation.
+Lengths are JavaScript string lengths (UTF-16 code units) on both sides. Failed checks return `INVALID_INPUT`.
+
+The server cannot read the text, so it can only limit the ciphertext size. 2,000 characters of UTF-8 is at most 8,000 bytes, plus a 16-byte tag, which is about 10,700 base64 characters. Socket.IO `maxHttpBufferSize` is set to 32 KB, so a larger packet closes the connection before any handler runs. The client then reconnects, and that message fails after its ack timeout.
 
 ## 5. Data model
 
@@ -218,10 +231,14 @@ type RoomState = {
 };
 ```
 
-- The imported `CryptoKey` is kept in a ref for the room screen. It is never written to local storage or sent anywhere.
-- Encryption code lives in one small module (`client/crypto.ts`) with four functions: generate key, import key, encrypt, decrypt. The rest of the client does not call Web Crypto directly.
-- Pending messages show after confirmed messages, in send order. A retry reuses the stored ciphertext and IV.
-- The send button is disabled when the connection is not `connected`.
+- The room screen (`RoomPage`) imports the key once and passes it to the chat component as a prop. It is never written to local storage or sent anywhere.
+- Encryption code lives in one small module (`client/crypto.ts`) with four async functions: `generateKey`, `importKey`, `encrypt`, `decrypt`. The rest of the client does not call Web Crypto directly. **Until step 6 this module is a temporary stand-in that does not encrypt**: the "ciphertext" is the base64url UTF-8 text, and the IV is 12 random bytes.
+- The display name comes from local storage, or from a name prompt that saves it. Storage access is wrapped in try/catch, so a browser that blocks storage still works for the visit.
+- `connected` means the socket is connected and the `room:join` ack has arrived. Until then the state stays `connecting` or `reconnecting`, so nothing is sent before the server knows the room.
+- Confirmed messages are merged by id and sorted by id. A confirmed message removes the pending message with the same `clientId`, whether it came from the send ack or from a rejoin.
+- Pending messages show after confirmed messages, in send order. A retry reuses the stored `clientId`, ciphertext and IV.
+- The send button is disabled when the connection is not `connected`. Enter sends and Shift+Enter adds a line.
+- Message text is rendered as React text with `white-space: pre-wrap`, never as HTML.
 - Socket.IO buffers emits while disconnected by default. The disabled button prevents most of this, and the `clientId` makes any late delivery safe.
 
 ## 7. Error handling
@@ -231,9 +248,12 @@ type RoomState = {
 | Unknown room | 404 on the room check, "room not found" screen |
 | Missing or invalid key in the link | "This link is incomplete" screen, with a hint to ask for the full link |
 | Message fails to decrypt | Shown as "Unable to decrypt this message", other messages still show |
-| Invalid input | Ack with `INVALID_INPUT`, message marked failed, inline hint |
+| Invalid input | Ack with `INVALID_INPUT`, message marked failed with retry |
+| Message over 2,000 characters | Rejected in the client with an inline message. The draft is kept and nothing is sent |
+| Join fails (`ROOM_NOT_FOUND`, `SERVER_ERROR` or no ack in time) | "Room not found" or "Could not join the room. Reload the page to try again." |
 | Database error | Ack with `SERVER_ERROR`, message marked failed with retry |
 | Ack timeout | Message marked failed with retry (same `clientId`) |
+| Packet over 32 KB | Socket.IO closes the connection. The client reconnects and the message fails after its ack timeout |
 | Connection drop | Status shows reconnecting, send disabled, rejoin and backfill on reconnect |
 | Server restart | Same as connection drop. Data is safe in Postgres |
 | Free-tier spin-down | Render shows a loading page for about a minute. Documented in the README |
@@ -243,7 +263,7 @@ type RoomState = {
 - **Secure context:** Web Crypto (`crypto.subtle`) works only on HTTPS or `localhost`. Testing on a phone through the dev server's LAN IP fails, because `crypto.subtle` is undefined there. Test on the deployed HTTPS URL, or use a tunnel.
 - **Keep the fragment:** navigation after room creation must include the hash. Any redirect or rewrite must keep it.
 - **Unique IV per message:** never reuse an IV with the same key. Generate 12 random bytes for each message with `crypto.getRandomValues`.
-- **Logging:** log connects, joins and errors with the room ID only. Never log the URL fragment, ciphertext or display names.
+- **Logging:** log connects, joins and errors with the socket ID and room ID only. Never log the URL fragment, ciphertext or display names.
 - **Rendering:** decrypted text is rendered as text only. A decrypted message is still untrusted input from another user.
 
 ## 9. Scale and reliability
