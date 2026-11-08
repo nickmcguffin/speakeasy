@@ -96,6 +96,14 @@ Requires Node 26 (see `.node-version`).
 npm install
 ```
 
+**Database**
+```sh
+cp .env.example .env
+```
+Set `DATABASE_URL` in `.env` to a Postgres connection string (for example, from Neon). Use `sslmode=verify-full`, because `pg` prints a security warning for `sslmode=require`. The server exits at startup without `DATABASE_URL`.
+
+`npm run dev` loads `.env`. `npm start` does not, because on Render the host sets `DATABASE_URL`. For a local production run, export it in your shell first.
+
 **Development**
 ```sh
 npm run dev
