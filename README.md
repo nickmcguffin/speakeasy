@@ -31,6 +31,8 @@ Due to my current role and having to cover someone on leave for the next week, I
 - The layout works on mobile and desktop, with keyboard support and good contrast.
 - Messages are limited in length and are rendered as plain text only.
 - The app is deployed and this README explains the decisions.
+- A user can give a room an optional name, which is encrypted like the messages.
+- The room shows who is currently connected.
 
 ## Stack and reasons
 - **TypeScript** on the client and server, so one language and shared types for messages.
@@ -91,7 +93,7 @@ This is end-to-end encryption with one shared key per room, the same pattern as 
 - Room password that derives the key (PBKDF2), so a leaked link alone is not enough.
 - Key rotation and encrypted display names.
 - User accounts.
-- Online presence and typing indicators.
+- Typing indicators.
 - Read receipts.
 - Edit and delete messages.
 - File and image uploads.
