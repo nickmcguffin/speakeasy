@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { io, type Socket } from "socket.io-client";
-import type { SocketEvents } from "../shared/types.js";
+import type { ClientToServerEvents, ServerToClientEvents } from "../shared/types.js";
 
 type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected";
 
@@ -15,7 +15,7 @@ export function ConnectionStatus() {
   const [connection, setConnection] = useState<ConnectionState>("connecting");
 
   useEffect(() => {
-    const socket: Socket<SocketEvents, SocketEvents> = io();
+    const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io();
 
     // socket.active is true while Socket.IO keeps retrying, false once it has given up.
     const handleConnectionLost = () => {

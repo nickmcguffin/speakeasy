@@ -4,24 +4,19 @@ import { createServer } from "node:http";
 import path from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { Server } from "socket.io";
-import type {
-  CreateRoomResponse,
-  ErrorResponse,
-  RoomResponse,
-  SocketEvents,
-} from "../shared/types.js";
+import type { CreateRoomResponse, ErrorResponse, RoomResponse } from "../shared/types.js";
+import { type ChatServer, registerChatHandlers } from "./chat.js";
 import { createSchema, pool } from "./db.js";
+import { isUuid } from "./validation.js";
 
 const port = process.env.PORT ?? 3000;
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const app = express();
 const httpServer = createServer(app);
-const io = new Server<SocketEvents, SocketEvents>(httpServer);
+// Larger packets close the connection before any handler runs. A full message is about 11 KB.
+const io: ChatServer = new Server(httpServer, { maxHttpBufferSize: 32 * 1024 });
 
-io.on("connection", (socket) => {
-  console.log(`socket connected: ${socket.id}`);
-});
+registerChatHandlers(io);
 
 // No database call, so a slow Neon wake-up cannot fail the health check.
 app.get("/api/health", (_req, res) => {
@@ -38,7 +33,7 @@ app.get("/api/rooms/:roomId", async (req, res) => {
   const { roomId } = req.params;
 
   // Postgres throws on a malformed uuid, so reject it here as a 404 instead of a 500.
-  if (!uuidPattern.test(roomId)) {
+  if (!isUuid(roomId)) {
     res.status(404).json({ error: "ROOM_NOT_FOUND" } satisfies ErrorResponse);
     return;
   }
