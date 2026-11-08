@@ -33,7 +33,13 @@ export type RoomResponse = {
 export type JoinPayload = { roomId: string; displayName: string; since?: number };
 export type SendPayload = { clientId: string; ciphertext: string; iv: string };
 
-export type JoinResult = { ok: true; messages: EncryptedMessage[] } | { ok: false; error: ErrorCode };
+// One joined socket. participantId is new for every join, so two people with the same name
+// are two entries, and a client finds its own entry by id, not by name.
+export type Participant = { participantId: string; name: string };
+
+export type JoinResult =
+  | { ok: true; participantId: string; messages: EncryptedMessage[] }
+  | { ok: false; error: ErrorCode };
 export type SendResult = { ok: true; message: EncryptedMessage } | { ok: false; error: ErrorCode };
 
 export type ClientToServerEvents = {
@@ -43,7 +49,10 @@ export type ClientToServerEvents = {
 
 export type ServerToClientEvents = {
   "message:new": (message: EncryptedMessage) => void;
+  // The full list of joined participants, in join order. Sent to the whole room after every
+  // join and leave, and replaces the client's list.
+  "room:presence": (participants: Participant[]) => void;
 };
 
-// Stored on socket.data after a successful room:join.
-export type SocketData = { roomId: string; displayName: string };
+// Stored on socket.data after a successful room:join. joinOrder sorts the presence list.
+export type SocketData = { roomId: string; displayName: string; participantId: string; joinOrder: number };
