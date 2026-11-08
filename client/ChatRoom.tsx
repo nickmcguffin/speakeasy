@@ -1,4 +1,12 @@
-import { type FormEvent, type KeyboardEvent, useEffect, useReducer, useRef, useState } from "react";
+import {
+  type FormEvent,
+  type KeyboardEvent,
+  useEffect,
+  useId,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { io, type Socket } from "socket.io-client";
 import type {
   ClientToServerEvents,
@@ -57,6 +65,7 @@ export function ChatRoom({ roomId, displayName, roomKey }: ChatRoomProps) {
   const [joinError, setJoinError] = useState<ErrorCode | null>(null);
   const [draft, setDraft] = useState("");
   const [draftError, setDraftError] = useState<string | null>(null);
+  const messageInputId = useId();
   const socketRef = useRef<ChatSocket | null>(null);
   // Read by the connect handler, which is set up once, so it cannot read state directly.
   const lastMessageIdRef = useRef<number | undefined>(undefined);
@@ -216,16 +225,16 @@ export function ChatRoom({ roomId, displayName, roomKey }: ChatRoomProps) {
       </ol>
 
       <form onSubmit={handleSubmit}>
-        <label>
-          Message
-          <br />
-          <textarea
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={handleKeyDown}
-            rows={3}
-          />
-        </label>
+        {/* A label that wraps the field would include the draft in the field's accessible name. */}
+        <label htmlFor={messageInputId}>Message</label>
+        <br />
+        <textarea
+          id={messageInputId}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={handleKeyDown}
+          rows={3}
+        />
         <br />
         <button type="submit" disabled={!canSend}>
           Send

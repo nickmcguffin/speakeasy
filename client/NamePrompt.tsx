@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useId, useState } from "react";
 
 const storageKey = "speakeasy:displayName";
 const maxNameLength = 32;
@@ -28,6 +28,7 @@ function storeName(name: string) {
 export function NamePrompt({ onSubmit }: { onSubmit: (displayName: string) => void }) {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const nameInputId = useId();
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -42,16 +43,15 @@ export function NamePrompt({ onSubmit }: { onSubmit: (displayName: string) => vo
 
   return (
     <form onSubmit={handleSubmit}>
-      <label>
-        Your name{" "}
-        <input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          maxLength={maxNameLength}
-          autoComplete="nickname"
-          autoFocus
-        />
-      </label>{" "}
+      <label htmlFor={nameInputId}>Your name</label>{" "}
+      <input
+        id={nameInputId}
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        maxLength={maxNameLength}
+        autoComplete="nickname"
+        autoFocus
+      />{" "}
       <button type="submit">Join</button>
       {error && <p role="alert">{error}</p>}
     </form>
