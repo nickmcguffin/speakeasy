@@ -306,3 +306,56 @@ type RoomState = {
 - **Identity:** accounts, then moderation (remove a person, rotate the link).
 - **Presence:** online list and typing indicators from Socket.IO room membership.
 - **Cold starts:** a paid instance removes the spin-down delay.
+
+## 12. Visual design
+
+### Purpose
+Go from "Create a room" to chatting with a friend in less than 30 seconds. The one memorable element is the share moment: the link is shown with the key part highlighted, because the key in the link is what makes Speakeasy private.
+
+### Colour tokens
+Light and dark mode follow the system setting.
+
+| Token | Light | Dark | Use |
+|---|---|---|---|
+| `bg` | `#F3F5F3` | `#121815` | Page |
+| `surface` | `#FFFFFF` | `#1B231F` | Header, composer bar, other people's messages |
+| `divider` | `#E1E7E3` | `#2B3530` | Lines between header, messages and composer |
+| `text` | `#17201B` | `#E6EDE8` | Main text |
+| `muted` | `#5C6660` | `#9AA59F` | Names, times, help text, placeholders |
+| `field-border` | `#73897D` | `#5F7468` | Edge of input fields (3:1 or more) |
+| `accent` | `#1F5C45` | `#1E5A43` | Main buttons, your messages |
+| `on-accent` | `#FFFFFF` | `#E9F2EC` | Text and icons on accent |
+| `focus` | `#1F5C45` | `#7CC9A1` | Focus rings, links |
+| `danger` | `#B42318` | `#F28B82` | Failed messages, errors |
+
+All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
+
+### Type
+- Instrument Sans for all text, self-hosted (no request to a font service, because the app is about privacy).
+- Monospace only for the room link in the share panel, because the key is a token that users must see exactly.
+- Hierarchy from size and weight. Sentence case. No all-caps labels.
+
+### Layout
+- Home: one narrow, left-aligned column. App name, one line about what it does, an optional room name field, and "Create a room".
+- Room: header (room name, connection status, copy link), message list, composer bar fixed at the bottom.
+- Share panel at the top of the message list while the room has no messages.
+- Your messages on the right in `accent`. Other people's messages on the left in `surface`. The name shows only on the first message in a group from the same person.
+
+### Components
+- Message field: pill shape, `field-border`, 2px `focus` ring when focused.
+- Send button: round, `accent`, send icon, `aria-label="Send"`.
+- One state screen component (title, explanation, optional action) for: incomplete link, room not found, page not found, cannot encrypt, could not load (with Retry).
+- Connection status: small dot with text. Colour is never the only signal.
+
+### Message states
+- Sending: lower opacity and "Sending...".
+- Failed: `danger` text with the reason. Retry for network and server errors. No Retry for `INVALID_INPUT`.
+- Wrong key: if the history has messages and none decrypt, a warning banner and sending is disabled.
+
+### Motion
+One moment only: a short slide-in for new messages. None when the user prefers reduced motion.
+
+### Accessibility and mobile
+- Visible focus rings on all controls. Labels use `htmlFor`.
+- Message list has `role="log"`, so screen readers announce new messages.
+- Layout uses `100dvh` and safe-area insets, so the composer stays above the mobile keyboard.
