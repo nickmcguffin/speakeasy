@@ -1,4 +1,4 @@
-import { type FormEvent, useId, useState } from "react";
+import { type SubmitEvent, useId, useState } from "react";
 
 const storageKey = "speakeasy:displayName";
 const maxNameLength = 32;
@@ -29,8 +29,9 @@ export function NamePrompt({ onSubmit }: { onSubmit: (displayName: string) => vo
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const nameInputId = useId();
+  const errorId = useId();
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     const displayName = name.trim();
     if (!isValidName(displayName)) {
@@ -42,8 +43,8 @@ export function NamePrompt({ onSubmit }: { onSubmit: (displayName: string) => vo
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      <label htmlFor={nameInputId}>Your name</label>{" "}
+    <form className="form" onSubmit={handleSubmit}>
+      <label htmlFor={nameInputId}>Your name</label>
       <input
         id={nameInputId}
         value={name}
@@ -51,9 +52,15 @@ export function NamePrompt({ onSubmit }: { onSubmit: (displayName: string) => vo
         maxLength={maxNameLength}
         autoComplete="nickname"
         autoFocus
-      />{" "}
-      <button type="submit">Join</button>
-      {error && <p role="alert">{error}</p>}
+        aria-invalid={error !== null}
+        aria-describedby={error ? errorId : undefined}
+      />
+      {error && (
+        <p id={errorId} role="alert" className="error">
+          {error}
+        </p>
+      )}
+      <button type="submit">Join room</button>
     </form>
   );
 }

@@ -1,4 +1,4 @@
-import { type FormEvent, useId, useState } from "react";
+import { type SubmitEvent, useId, useState } from "react";
 import type { CreateRoomRequest, CreateRoomResponse } from "../shared/types.js";
 import { encrypt, generateKey, importKey } from "./crypto";
 
@@ -34,8 +34,9 @@ export function HomePage({ onRoomCreated }: { onRoomCreated: (room: CreatedRoom)
   const [roomName, setRoomName] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
   const roomNameInputId = useId();
+  const nameErrorId = useId();
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     const name = roomName.trim();
     if (name.length > maxRoomNameLength) {
@@ -52,24 +53,35 @@ export function HomePage({ onRoomCreated }: { onRoomCreated: (room: CreatedRoom)
   };
 
   return (
-    <main>
+    <main className="page">
       <h1>Speakeasy</h1>
-      <form onSubmit={handleSubmit}>
-        <label htmlFor={roomNameInputId}>Room name</label>{" "}
+      <p className="lead">Private rooms for quick conversations.</p>
+      <p className="lead muted">Messages are encrypted in your browser.</p>
+      <form className="form" onSubmit={handleSubmit}>
+        <label htmlFor={roomNameInputId}>Room name (optional)</label>
         <input
           id={roomNameInputId}
           value={roomName}
           onChange={(event) => setRoomName(event.target.value)}
+          placeholder="Friday plans"
           autoComplete="off"
-        />{" "}
+          aria-invalid={nameError !== null}
+          aria-describedby={nameError ? nameErrorId : undefined}
+        />
+        {nameError && (
+          <p id={nameErrorId} role="alert" className="error">
+            {nameError}
+          </p>
+        )}
         <button type="submit" disabled={status === "creating"}>
-          {status === "creating" ? "Creating room..." : "Create room"}
+          {status === "creating" ? "Creating a room..." : "Create a room"}
         </button>
-        {nameError && <p role="alert">{nameError}</p>}
+        {status === "failed" && (
+          <p role="alert" className="error">
+            Could not create a room. Check your connection and try again.
+          </p>
+        )}
       </form>
-      {status === "failed" && (
-        <p role="alert">Could not create a room. Check your connection and try again.</p>
-      )}
     </main>
   );
 }

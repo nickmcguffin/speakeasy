@@ -103,7 +103,8 @@ export function RoomPage({ roomId, encodedKey }: RoomPageProps) {
     return <p role="alert">Could not load the room. Reload the page to try again.</p>;
   }
   return (
-    <main>
+    // The chat screen is styled in a later step. Until then only the name prompt uses the column.
+    <main className={displayName ? undefined : "page"}>
       <h1>{room.roomName ?? untitledRoom}</h1>
       {displayName ? (
         <ChatRoom roomId={roomId} displayName={displayName} roomKey={room.roomKey} browserToken={browserToken} />
