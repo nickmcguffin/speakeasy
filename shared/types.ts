@@ -30,15 +30,19 @@ export type RoomResponse = {
 
 // Socket.IO
 
-export type JoinPayload = { roomId: string; displayName: string; since?: number };
+// browserToken is a random UUID kept in this browser's localStorage. It groups a browser's tabs
+// into one participant. The server never sends it to any client.
+export type JoinPayload = { roomId: string; displayName: string; browserToken: string; since?: number };
 export type SendPayload = { clientId: string; ciphertext: string; iv: string };
 
-// One joined socket. participantId is new for every join, so two people with the same name
-// are two entries, and a client finds its own entry by id, not by name.
-export type Participant = { participantId: string; name: string };
+// One browser in the room, however many tabs it has open. presenceKey is a hash of the room ID
+// and the browser token: stable for the browser in this room, different in every room, and it
+// does not reveal the token. Two browsers with the same name are two entries, and a client
+// finds its own entry by presenceKey, not by name.
+export type Participant = { presenceKey: string; name: string };
 
 export type JoinResult =
-  | { ok: true; participantId: string; messages: EncryptedMessage[] }
+  | { ok: true; presenceKey: string; messages: EncryptedMessage[] }
   | { ok: false; error: ErrorCode };
 export type SendResult = { ok: true; message: EncryptedMessage } | { ok: false; error: ErrorCode };
 
@@ -55,4 +59,4 @@ export type ServerToClientEvents = {
 };
 
 // Stored on socket.data after a successful room:join. joinOrder sorts the presence list.
-export type SocketData = { roomId: string; displayName: string; participantId: string; joinOrder: number };
+export type SocketData = { roomId: string; displayName: string; browserToken: string; joinOrder: number };

@@ -58,9 +58,9 @@ function joinErrorText(error: ErrorCode) {
     : "Could not join the room. Reload the page to try again.";
 }
 
-type ChatRoomProps = { roomId: string; displayName: string; roomKey: RoomKey };
+type ChatRoomProps = { roomId: string; displayName: string; roomKey: RoomKey; browserToken: string };
 
-export function ChatRoom({ roomId, displayName, roomKey }: ChatRoomProps) {
+export function ChatRoom({ roomId, displayName, roomKey, browserToken }: ChatRoomProps) {
   const [state, dispatch] = useReducer(roomReducer, initialRoomState);
   const [joinError, setJoinError] = useState<ErrorCode | null>(null);
   const [draft, setDraft] = useState("");
@@ -87,6 +87,7 @@ export function ChatRoom({ roomId, displayName, roomKey }: ChatRoomProps) {
         const result = await socket.timeout(ackTimeoutMs).emitWithAck("room:join", {
           roomId,
           displayName,
+          browserToken,
           since: lastMessageIdRef.current,
         });
         if (!result.ok) {
@@ -95,7 +96,7 @@ export function ChatRoom({ roomId, displayName, roomKey }: ChatRoomProps) {
         }
         setJoinError(null);
         dispatch({ type: "received", messages: await decryptMessages(roomKey, result.messages) });
-        dispatch({ type: "joined", participantId: result.participantId });
+        dispatch({ type: "joined", presenceKey: result.presenceKey });
       } catch {
         setJoinError("SERVER_ERROR");
       }
@@ -120,7 +121,7 @@ export function ChatRoom({ roomId, displayName, roomKey }: ChatRoomProps) {
     return () => {
       socket.disconnect();
     };
-  }, [roomId, displayName, roomKey]);
+  }, [roomId, displayName, roomKey, browserToken]);
 
   // Used for the first send and for Retry. A retry reuses the stored clientId, ciphertext and iv,
   // so the server can recognise it and store the message only once.
@@ -202,9 +203,9 @@ export function ChatRoom({ roomId, displayName, roomKey }: ChatRoomProps) {
           </p>
           <ul>
             {state.participants.map((participant) => (
-              <li key={participant.participantId}>
+              <li key={participant.presenceKey}>
                 {participant.name}
-                {participant.participantId === state.participantId && " (you)"}
+                {participant.presenceKey === state.presenceKey && " (you)"}
               </li>
             ))}
           </ul>

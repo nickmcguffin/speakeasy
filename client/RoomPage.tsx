@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { RoomResponse } from "../shared/types.js";
 import { ChatRoom } from "./ChatRoom";
 import { decrypt, importKey, type RoomKey } from "./crypto";
+import { getBrowserToken } from "./browserToken";
 import { NamePrompt, readStoredName } from "./NamePrompt";
 
 type RoomStatus = "loading" | "incomplete-link" | "found" | "not-found" | "failed";
@@ -59,6 +60,7 @@ export function RoomPage({ roomId, encodedKey }: RoomPageProps) {
   // The key lives only in this state and in the URL. It is never stored or sent.
   const [room, setRoom] = useState<LoadedRoom>({ status: "loading", roomKey: null, roomName: null });
   const [displayName, setDisplayName] = useState(readStoredName);
+  const [browserToken] = useState(getBrowserToken);
 
   useEffect(() => {
     let isCurrent = true;
@@ -104,7 +106,7 @@ export function RoomPage({ roomId, encodedKey }: RoomPageProps) {
     <main>
       <h1>{room.roomName ?? untitledRoom}</h1>
       {displayName ? (
-        <ChatRoom roomId={roomId} displayName={displayName} roomKey={room.roomKey} />
+        <ChatRoom roomId={roomId} displayName={displayName} roomKey={room.roomKey} browserToken={browserToken} />
       ) : (
         <NamePrompt onSubmit={setDisplayName} />
       )}

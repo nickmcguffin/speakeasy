@@ -20,6 +20,9 @@ export function parseJoinPayload(payload: unknown): JoinPayload | null {
   if (!isObject(payload) || !isUuid(payload.roomId) || typeof payload.displayName !== "string") {
     return null;
   }
+  if (!isUuid(payload.browserToken)) {
+    return null;
+  }
 
   const displayName = payload.displayName.trim();
   if (displayName.length < 1 || displayName.length > 32) {
@@ -31,7 +34,7 @@ export function parseJoinPayload(payload: unknown): JoinPayload | null {
     return null;
   }
 
-  return { roomId: payload.roomId, displayName, since: since as number | undefined };
+  return { roomId: payload.roomId, displayName, browserToken: payload.browserToken, since: since as number | undefined };
 }
 
 type RoomNameColumns = { nameCiphertext: string | null; nameIv: string | null };

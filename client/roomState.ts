@@ -20,12 +20,12 @@ export type RoomState = {
   messages: ChatMessage[]; // confirmed and decrypted, ordered by id
   pending: PendingMessage[]; // in send order
   participants: Participant[]; // the last room:presence list, kept while disconnected
-  participantId: string | null; // this client's entry, from the latest join ack
+  presenceKey: string | null; // this browser's entry, from the latest join ack
 };
 
 export type RoomAction =
   | { type: "connection"; connection: ConnectionState }
-  | { type: "joined"; participantId: string }
+  | { type: "joined"; presenceKey: string }
   | { type: "presence"; participants: Participant[] }
   | { type: "received"; messages: ChatMessage[] }
   | { type: "queued"; clientId: string; body: string }
@@ -38,7 +38,7 @@ export const initialRoomState: RoomState = {
   messages: [],
   pending: [],
   participants: [],
-  participantId: null,
+  presenceKey: null,
 };
 
 // Merges by id, so a message that arrives twice (join backfill and broadcast) shows once.
@@ -69,7 +69,7 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
     // The join ack and room:presence can arrive in either order. They set separate fields,
     // and "(you)" is matched when both are there.
     case "joined":
-      return { ...state, connection: "connected", participantId: action.participantId };
+      return { ...state, connection: "connected", presenceKey: action.presenceKey };
 
     case "presence":
       return { ...state, participants: action.participants };

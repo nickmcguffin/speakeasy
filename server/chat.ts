@@ -1,5 +1,5 @@
 import type { DefaultEventsMap, Server, Socket } from "socket.io";
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import type {
   ClientToServerEvents,
   EncryptedMessage,
@@ -86,21 +86,39 @@ async function loadMessages(roomId: string, since: number | undefined) {
   return messages;
 }
 
-// Sends the room's current participants to everyone in it. Only sockets that finished a join
-// have a participantId. A socket that left or disconnected is no longer in the room.
+// The browser's ID in this room. The token itself never leaves the server.
+function presenceKey(roomId: string, browserToken: string) {
+  return createHash("sha256").update(`${roomId}:${browserToken}`).digest("base64url");
+}
+
+// Sends the room's current participants to everyone in it: one entry per browser, however many
+// of its tabs are connected. Only sockets that finished a join have a browser token. A socket
+// that left or disconnected is no longer in the room, so a browser leaves the list when its
+// last connection closes. Entries are ordered by the browser's earliest open join and show the
+// name from its latest join.
 async function broadcastPresence(io: ChatServer, roomId: string) {
-  const joined: SocketData[] = [];
+  const browsers = new Map<string, { firstJoin: number; lastJoin: number; name: string }>();
   for (const member of await io.in(roomId).fetchSockets()) {
-    const { displayName, participantId, joinOrder } = member.data;
-    if (displayName && participantId && joinOrder !== undefined) {
-      joined.push({ roomId, displayName, participantId, joinOrder });
+    const { displayName, browserToken, joinOrder } = member.data;
+    if (!displayName || !browserToken || joinOrder === undefined) {
+      continue;
+    }
+    const browser = browsers.get(browserToken);
+    if (!browser) {
+      browsers.set(browserToken, { firstJoin: joinOrder, lastJoin: joinOrder, name: displayName });
+      continue;
+    }
+    browser.firstJoin = Math.min(browser.firstJoin, joinOrder);
+    if (joinOrder > browser.lastJoin) {
+      browser.lastJoin = joinOrder;
+      browser.name = displayName;
     }
   }
-  joined.sort((first, second) => first.joinOrder - second.joinOrder);
 
+  const ordered = [...browsers].sort(([, first], [, second]) => first.firstJoin - second.firstJoin);
   const participants: Participant[] = [];
-  for (const member of joined) {
-    participants.push({ participantId: member.participantId, name: member.displayName });
+  for (const [browserToken, browser] of ordered) {
+    participants.push({ presenceKey: presenceKey(roomId, browserToken), name: browser.name });
   }
   io.to(roomId).emit("room:presence", participants);
 }
@@ -128,11 +146,10 @@ function handleJoin(io: ChatServer, socket: ChatSocket) {
       // Join before loading, so a message sent in between is broadcast to this socket.
       // A duplicate from that overlap is dropped by id on the client.
       await socket.join(join.roomId);
-      const participantId = randomUUID();
       joinCount += 1;
       socket.data.roomId = join.roomId;
       socket.data.displayName = join.displayName;
-      socket.data.participantId = participantId;
+      socket.data.browserToken = join.browserToken;
       socket.data.joinOrder = joinCount;
       console.log(`socket ${socket.id} joined room ${join.roomId}`);
 
@@ -146,7 +163,7 @@ function handleJoin(io: ChatServer, socket: ChatSocket) {
         throw error;
       }
 
-      reply({ ok: true, participantId, messages });
+      reply({ ok: true, presenceKey: presenceKey(join.roomId, join.browserToken), messages });
       await broadcastPresence(io, join.roomId);
     } catch (error) {
       console.error(`room:join failed for socket ${socket.id}: ${(error as Error).message}`);
