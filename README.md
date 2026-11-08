@@ -64,7 +64,7 @@ Messages are end-to-end encrypted, because "private" should mean that the server
 
 - **Key in the link.** When a user creates a room, the browser generates a random 256-bit AES-GCM key with the Web Crypto API, before it asks the server for a room. The key goes in the URL fragment: `/r/<roomId>#<key>`. Browsers never send the fragment to the server.
 - **Key in memory only.** The key is never stored in local or session storage, logged, or sent in a request.
-- **Encrypt in the browser.** Each client encrypts messages before it sends them and decrypts them when they arrive. Every message gets a new random 12-byte IV. The server stores and relays only ciphertext and the IV.
+- **Encrypt in the browser.** Each client encrypts messages and the room name before it sends them and decrypts them when they arrive. Every message gets a new random 12-byte IV. The server stores and relays only ciphertext and the IV.
 - **Missing or wrong key.** A link without a valid key shows "This link is incomplete" and does not join. A message that fails to decrypt (wrong key or changed data) shows "Unable to decrypt this message", and the other messages still show.
 - **Secure context.** Web Crypto works only on HTTPS or `localhost`. Elsewhere the app shows "This browser cannot encrypt messages".
 - **Result.** The server, the database and the host cannot read messages. Only people with the full link can.
@@ -77,6 +77,7 @@ This is end-to-end encryption with one shared key per room, the same pattern as 
 - On the free tier, the first load after a quiet period can take about a minute while the server wakes up.
 - One server instance only. More instances would need a shared pub/sub layer.
 - A leaked link gives access to the room and its full history. Links and keys cannot be changed.
+- The full link and the room name stay in the browser history of each device that opens the room.
 - Display names and timestamps are not encrypted, so the server knows who spoke and when.
 - The server can only limit the size of the encrypted data, not check the message text.
 - No moderation, editing or deleting of messages.

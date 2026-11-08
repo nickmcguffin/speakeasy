@@ -15,11 +15,18 @@ export type ErrorCode = "ROOM_NOT_FOUND" | "NOT_FOUND" | "INVALID_INPUT" | "NOT_
 
 export type ErrorResponse = { error: ErrorCode };
 
-// POST /api/rooms (no request body)
+// POST /api/rooms. The body is optional: no body for a room without a name, or both fields.
+// The name is encrypted in the browser with the room key, like a message.
+export type CreateRoomRequest = { nameCiphertext: string; nameIv: string };
 export type CreateRoomResponse = { roomId: string };
 
-// GET /api/rooms/:roomId
-export type RoomResponse = { roomId: string; createdAt: string };
+// GET /api/rooms/:roomId. The name fields are null when the room has no name.
+export type RoomResponse = {
+  roomId: string;
+  createdAt: string;
+  nameCiphertext: string | null; // base64url
+  nameIv: string | null; // base64url, 12 bytes
+};
 
 // Socket.IO
 

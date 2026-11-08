@@ -3,6 +3,11 @@ CREATE TABLE IF NOT EXISTS rooms (
   created_at  timestamptz NOT NULL DEFAULT now()
 );
 
+-- CREATE TABLE IF NOT EXISTS does not add columns to an existing table, so later columns
+-- are added here. The optional room name is encrypted in the browser like a message.
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS name_ciphertext text;
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS name_iv text;
+
 CREATE TABLE IF NOT EXISTS messages (
   id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   room_id      uuid NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,

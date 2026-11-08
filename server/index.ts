@@ -7,7 +7,7 @@ import { Server } from "socket.io";
 import type { CreateRoomResponse, ErrorResponse, RoomResponse } from "../shared/types.js";
 import { type ChatServer, registerChatHandlers } from "./chat.js";
 import { createSchema, pool } from "./db.js";
-import { isUuid } from "./validation.js";
+import { isUuid, parseCreateRoomBody } from "./validation.js";
 
 const port = process.env.PORT ?? 3000;
 
@@ -23,9 +23,33 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/api/rooms", async (_req, res) => {
+const parseJson = express.json({ limit: "1kb" });
+
+// Parses an optional JSON body. A body that cannot be parsed or is too large is invalid input.
+// The parser's error message can quote the body, so it is answered here and not logged.
+function readJsonBody(req: Request, res: Response, next: NextFunction) {
+  parseJson(req, res, (error?: unknown) => {
+    if (error) {
+      res.status(400).json({ error: "INVALID_INPUT" } satisfies ErrorResponse);
+      return;
+    }
+    next();
+  });
+}
+
+app.post("/api/rooms", readJsonBody, async (req, res) => {
+  const name = parseCreateRoomBody(req.body);
+  if (!name) {
+    res.status(400).json({ error: "INVALID_INPUT" } satisfies ErrorResponse);
+    return;
+  }
+
   const roomId = randomUUID();
-  await pool.query("INSERT INTO rooms (id) VALUES ($1)", [roomId]);
+  await pool.query("INSERT INTO rooms (id, name_ciphertext, name_iv) VALUES ($1, $2, $3)", [
+    roomId,
+    name.nameCiphertext,
+    name.nameIv,
+  ]);
   res.status(201).json({ roomId } satisfies CreateRoomResponse);
 });
 
@@ -38,10 +62,12 @@ app.get("/api/rooms/:roomId", async (req, res) => {
     return;
   }
 
-  const result = await pool.query<{ id: string; created_at: Date }>(
-    "SELECT id, created_at FROM rooms WHERE id = $1",
-    [roomId],
-  );
+  const result = await pool.query<{
+    id: string;
+    created_at: Date;
+    name_ciphertext: string | null;
+    name_iv: string | null;
+  }>("SELECT id, created_at, name_ciphertext, name_iv FROM rooms WHERE id = $1", [roomId]);
   const room = result.rows[0];
 
   if (!room) {
@@ -49,7 +75,12 @@ app.get("/api/rooms/:roomId", async (req, res) => {
     return;
   }
 
-  res.json({ roomId: room.id, createdAt: room.created_at.toISOString() } satisfies RoomResponse);
+  res.json({
+    roomId: room.id,
+    createdAt: room.created_at.toISOString(),
+    nameCiphertext: room.name_ciphertext,
+    nameIv: room.name_iv,
+  } satisfies RoomResponse);
 });
 
 // Catches any method and depth under /api. New API routes go above this.

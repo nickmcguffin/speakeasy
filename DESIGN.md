@@ -73,13 +73,14 @@ The server serves the built client from `client/dist` whenever that folder exist
 
 ### Create a room
 1. Client generates the room key with `crypto.subtle.generateKey` (AES-GCM, 256 bits, extractable) and exports it to base64url.
-2. Client sends `POST /api/rooms`. The key is not in the request.
-3. Server makes an ID with `crypto.randomUUID()`, inserts it into `rooms`, and returns `{ roomId }`.
-4. Client navigates to `/r/:roomId#<key>` with `history.pushState` and shows the copy-link action. The copied link always includes the fragment.
+2. The room name is optional. The client trims it and rejects more than 60 characters with an inline message, keeping the text. If a name is left, the client encrypts it with the new key exactly like a message, with its own random 12-byte IV.
+3. Client sends `POST /api/rooms` with `{ nameCiphertext, nameIv }`, or with no body when there is no name. The key and the plain name are never in the request.
+4. Server validates the body, makes an ID with `crypto.randomUUID()`, inserts the ID and the name columns into `rooms`, and returns `{ roomId }`.
+5. Client navigates to `/r/:roomId#<key>` with `history.pushState` and shows the copy-link action. The copied link always includes the fragment.
 
 ### Join a room
 1. Client reads the key from `location.hash` and imports it with `crypto.subtle.importKey` (AES-GCM, not extractable, encrypt and decrypt only). The key must be exactly the 43 base64url characters that `generateKey` makes: 32 bytes, no padding, no `+` or `/`, no whitespace. If the key is missing or invalid, the client shows the "incomplete link" screen and stops, with no room lookup and no socket. Changing only the fragment in the address bar does not reload the page, so the client listens for `hashchange` and starts a fresh room screen with the new key.
-2. Client checks `GET /api/rooms/:roomId`. A 404 shows the "room not found" screen before the user types a name.
+2. Client checks `GET /api/rooms/:roomId`. A 404 shows the "room not found" screen before the user types a name. Otherwise the client decrypts the room name with the key and shows it in the heading, with the tab title `<name> | Speakeasy`. A room with no name, or a name that does not decrypt (for example with a wrong key), shows "Untitled room" and the page works as normal. The title goes back to "Speakeasy" when the room screen closes.
 3. Client gets the display name from local storage, or asks for it.
 4. Client emits `room:join { roomId, displayName }`.
 5. Server validates, leaves any room the socket was already in, puts the socket in the Socket.IO room, stores `roomId` and `displayName` on `socket.data`, and acks with the last 50 messages in ascending id order. It joins before it loads, so a message sent in between is not missed. A duplicate from that overlap is dropped by id on the client.
@@ -104,12 +105,14 @@ The server serves the built client from `client/dist` whenever that folder exist
 ### REST
 | Method and path | Response |
 |---|---|
-| `POST /api/rooms` | `201 { roomId }` |
-| `GET /api/rooms/:roomId` | `200 { roomId, createdAt }` or `404 { error: "ROOM_NOT_FOUND" }` |
+| `POST /api/rooms`, optional body `{ nameCiphertext, nameIv }` | `201 { roomId }` or `400 { error: "INVALID_INPUT" }` |
+| `GET /api/rooms/:roomId` | `200 { roomId, createdAt, nameCiphertext, nameIv }` (name fields `null` when there is no name) or `404 { error: "ROOM_NOT_FOUND" }` |
 | `GET /api/health` | `200 { ok: true }` (Render health check) |
 | Any other `/api` request | `404 { error: "NOT_FOUND" }` |
 
-The response bodies are typed in `shared/` (see "Shared types" below): `CreateRoomResponse`, `RoomResponse`, and `ErrorResponse` for every error. `POST /api/rooms` takes no request body.
+The bodies are typed in `shared/` (see "Shared types" below): `CreateRoomRequest`, `CreateRoomResponse`, `RoomResponse`, and `ErrorResponse` for every error.
+
+`POST /api/rooms` takes either no body or both name fields. Only this route parses JSON, with a 1 KB limit. A body that is not valid JSON, is too large, is not an object, or has only one valid field returns 400 `INVALID_INPUT`, and no room is created. The parser's error message can quote the body, so the route answers it directly instead of passing it to the logging error handler. A body sent with a content type other than JSON is not parsed and counts as no body. The name fields are never logged.
 
 ### Socket.IO events
 Typed with Socket.IO's `ClientToServerEvents`, `ServerToClientEvents` and `SocketData` generics. The types live in `shared/types.ts`.
@@ -154,8 +157,14 @@ type ErrorCode = "ROOM_NOT_FOUND" | "NOT_FOUND" | "INVALID_INPUT" | "NOT_JOINED"
 
 // REST
 type ErrorResponse = { error: ErrorCode };
-type CreateRoomResponse = { roomId: string };                 // POST /api/rooms
-type RoomResponse = { roomId: string; createdAt: string };    // GET /api/rooms/:roomId, createdAt in ISO 8601
+type CreateRoomRequest = { nameCiphertext: string; nameIv: string };  // POST /api/rooms, optional body
+type CreateRoomResponse = { roomId: string };                          // POST /api/rooms
+type RoomResponse = {                                                  // GET /api/rooms/:roomId
+  roomId: string;
+  createdAt: string;              // ISO 8601
+  nameCiphertext: string | null;  // base64url, null when there is no name
+  nameIv: string | null;          // base64url, 12 bytes
+};
 
 // Socket.IO acks
 type JoinResult = { ok: true; messages: EncryptedMessage[] } | { ok: false; error: ErrorCode };
@@ -174,14 +183,16 @@ type ChatMessage = Omit<EncryptedMessage, "ciphertext" | "iv"> & {
 |---|---|---|
 | plain text body | client | trimmed, 1 to 2,000 characters |
 | display name | client | trimmed, 1 to 32 characters |
+| room name | client | trimmed, at most 60 characters. Empty means no name |
 | `roomId` | server | UUID format (`INVALID_INPUT`), and must exist (`ROOM_NOT_FOUND`) |
 | `displayName` | server | trimmed, 1 to 32 characters |
 | `since` | server | optional, non-negative integer |
 | `clientId` | server | UUID format |
 | `iv` | server | base64url without padding, exactly 16 characters, which is 12 bytes |
 | `ciphertext` | server | base64url without padding, 1 to 12,000 characters |
+| `nameCiphertext`, `nameIv` | server | both or neither. `nameIv` as `iv`. `nameCiphertext` base64url without padding, 1 to 400 characters |
 
-Lengths are JavaScript string lengths (UTF-16 code units) on both sides. Failed checks return `INVALID_INPUT`.
+Lengths are JavaScript string lengths (UTF-16 code units) on both sides. Failed checks return `INVALID_INPUT`. A 60-character name is at most 180 bytes of UTF-8, plus the 16-byte tag, which is 262 base64url characters, so 400 leaves room without allowing large values.
 
 The server cannot read the text, so it can only limit the ciphertext size. 2,000 UTF-16 code units are at most 6,000 bytes of UTF-8 (3 bytes per unit, or 4 bytes per surrogate pair). With the 16-byte tag that is 6,016 bytes, or 8,022 base64url characters, well under 12,000. Socket.IO `maxHttpBufferSize` is set to 32 KB, so a larger packet closes the connection before any handler runs. The client then reconnects, and that message fails after its ack timeout.
 
@@ -192,6 +203,9 @@ CREATE TABLE IF NOT EXISTS rooms (
   id          uuid PRIMARY KEY,
   created_at  timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS name_ciphertext text;
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS name_iv text;
 
 CREATE TABLE IF NOT EXISTS messages (
   id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -211,7 +225,9 @@ CREATE INDEX IF NOT EXISTS messages_room_id_id ON messages (room_id, id);
 - **`UNIQUE (room_id, client_id)`:** makes retries safe. If the insert succeeded but the ack was lost, the retry hits the conflict. The server then returns the stored row and does not broadcast again.
 - **Base64url text columns:** simple to send as JSON. `bytea` would save some space but adds encoding steps on both sides.
 - **No key column:** the server never receives the key, so it cannot store it.
+- **Encrypted room name:** `name_ciphertext` and `name_iv` hold the optional name, encrypted like a message. Both are null when there is no name.
 - **Schema setup:** the server runs this file at startup. It is idempotent. A migration tool is not needed for two tables.
+- **Added columns:** `CREATE TABLE IF NOT EXISTS` does not change a table that already exists, as in production. Columns added later use `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. They are nullable, so rooms created before them have no name, and the previous server version can still insert rooms after the change.
 - **Database access:** the `pg` package with a connection pool and plain parameterised SQL. No ORM.
 - **Later-list:** `rooms.expires_at` for the expiry setting.
 
@@ -284,7 +300,7 @@ type RoomState = {
 |---|---|---|---|
 | Access control | Secret link | Accounts or room passwords | Much less to build, faster join. Anyone with the full link can join and read. |
 | Message privacy | End-to-end, key in URL fragment | Server-side encryption at rest | A key stored next to the database does not protect against the server. The fragment never reaches the server. |
-| What is encrypted | Message text only | Names and timestamps too | Keeps the server able to order, validate and display basic metadata. |
+| What is encrypted | Message text and the room name | Display names and timestamps too | Keeps the server able to order, validate and display basic metadata. |
 | Real-time | Own Socket.IO server | Managed service (Pusher, Ably, Supabase Realtime) | Shows the real-time work, one codebase. More code to own. |
 | Socket library | Socket.IO | `ws` | Reconnection, acks and rooms built in. Larger client bundle. |
 | History on join | In the join ack | Separate REST endpoint | One round trip, and the same path handles reconnect backfill. |
@@ -303,6 +319,7 @@ type RoomState = {
 - **Room settings:** expiry with a cleanup job (also limits exposure of a leaked link), participant limit, and a creator token to manage them.
 - **Room password:** derive the key from a password (PBKDF2) instead of putting it in the link, so a leaked link alone is not enough.
 - **Stronger encryption model:** key rotation, encrypted display names, and AES-GCM additional data that binds each ciphertext to its room and `clientId`.
+- **AES-GCM additional data so a name ciphertext cannot be used as a message:** today the name and the messages use the same key and format, so someone with the room ID could post the stored name ciphertext as a message, and it would decrypt.
 - **Identity:** accounts, then moderation (remove a person, rotate the link).
 - **Presence:** online list and typing indicators from Socket.IO room membership.
 - **Cold starts:** a paid instance removes the spin-down delay.
