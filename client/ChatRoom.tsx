@@ -93,7 +93,7 @@ export function ChatRoom({ roomId, displayName, roomKey }: ChatRoomProps) {
         }
         setJoinError(null);
         dispatch({ type: "received", messages: await decryptMessages(roomKey, result.messages) });
-        dispatch({ type: "connection", connection: "connected" });
+        dispatch({ type: "joined", participantId: result.participantId });
       } catch {
         setJoinError("SERVER_ERROR");
       }
@@ -112,6 +112,8 @@ export function ChatRoom({ roomId, displayName, roomKey }: ChatRoomProps) {
     socket.on("disconnect", handleConnectionLost);
     socket.on("connect_error", handleConnectionLost);
     socket.on("message:new", handleNewMessage);
+    // Replaces the whole list. After a disconnect the old list stays until this arrives again.
+    socket.on("room:presence", (participants) => dispatch({ type: "presence", participants }));
 
     return () => {
       socket.disconnect();
@@ -190,6 +192,22 @@ export function ChatRoom({ roomId, displayName, roomKey }: ChatRoomProps) {
       <p>Joined as {displayName}</p>
       <p>{connectionLabels[state.connection]}</p>
       {joinError && <p role="alert">{joinErrorText(joinError)}</p>}
+
+      {state.participants.length > 0 && (
+        <section aria-label="People in this room">
+          <p>
+            {state.participants.length} {state.participants.length === 1 ? "person" : "people"} here
+          </p>
+          <ul>
+            {state.participants.map((participant) => (
+              <li key={participant.participantId}>
+                {participant.name}
+                {participant.participantId === state.participantId && " (you)"}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <ol aria-label="Messages" aria-live="polite">
         {state.messages.map((message) => (

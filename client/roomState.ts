@@ -1,4 +1,4 @@
-import type { EncryptedMessage } from "../shared/types.js";
+import type { EncryptedMessage, Participant } from "../shared/types.js";
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected";
 export type MessageStatus = "sending" | "sent" | "failed";
@@ -19,17 +19,27 @@ export type RoomState = {
   connection: ConnectionState;
   messages: ChatMessage[]; // confirmed and decrypted, ordered by id
   pending: PendingMessage[]; // in send order
+  participants: Participant[]; // the last room:presence list, kept while disconnected
+  participantId: string | null; // this client's entry, from the latest join ack
 };
 
 export type RoomAction =
   | { type: "connection"; connection: ConnectionState }
+  | { type: "joined"; participantId: string }
+  | { type: "presence"; participants: Participant[] }
   | { type: "received"; messages: ChatMessage[] }
   | { type: "queued"; clientId: string; body: string }
   | { type: "encrypted"; clientId: string; ciphertext: string; iv: string }
   | { type: "sending"; clientId: string }
   | { type: "failed"; clientId: string };
 
-export const initialRoomState: RoomState = { connection: "connecting", messages: [], pending: [] };
+export const initialRoomState: RoomState = {
+  connection: "connecting",
+  messages: [],
+  pending: [],
+  participants: [],
+  participantId: null,
+};
 
 // Merges by id, so a message that arrives twice (join backfill and broadcast) shows once.
 function mergeMessages(current: ChatMessage[], incoming: ChatMessage[]) {
@@ -55,6 +65,14 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
   switch (action.type) {
     case "connection":
       return { ...state, connection: action.connection };
+
+    // The join ack and room:presence can arrive in either order. They set separate fields,
+    // and "(you)" is matched when both are there.
+    case "joined":
+      return { ...state, connection: "connected", participantId: action.participantId };
+
+    case "presence":
+      return { ...state, participants: action.participants };
 
     case "received": {
       // A confirmed message replaces the pending one with the same clientId. This covers both
