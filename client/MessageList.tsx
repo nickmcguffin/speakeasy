@@ -10,11 +10,14 @@ const failureText: Record<SendFailure, string> = {
 
 // Within this distance of the end, the list counts as at the bottom.
 const bottomSlackPx = 48;
+// A longer pause between two messages starts a new group, even from the same author.
+const groupGapMs = 2 * 60 * 1000;
 
 type MessageItemProps = {
   author: string;
   mine: boolean;
   groupStart: boolean;
+  groupEnd: boolean;
   isNew: boolean;
   body: string | null;
   time: string;
@@ -23,11 +26,23 @@ type MessageItemProps = {
   onRetry?: () => void;
 };
 
+// One message before grouping: confirmed messages first, then pending ones.
+type Entry = Omit<MessageItemProps, "groupStart" | "groupEnd"> & { key: string };
+
+// A new group starts when the author changes or after a long pause. After step 7e, an event
+// between two messages will also start one.
+function startsGroup(previous: Entry | undefined, entry: Entry) {
+  if (!previous || previous.author !== entry.author) {
+    return true;
+  }
+  return Date.parse(entry.time) - Date.parse(previous.time) > groupGapMs;
+}
+
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
-function MessageItem({ author, mine, groupStart, isNew, body, time, sending, failure, onRetry }: MessageItemProps) {
+function MessageItem({ author, mine, groupStart, groupEnd, isNew, body, time, sending, failure, onRetry }: MessageItemProps) {
   let className = mine ? "message mine" : "message";
   if (groupStart) {
     className += " group-start";
@@ -46,10 +61,14 @@ function MessageItem({ author, mine, groupStart, isNew, body, time, sending, fai
         ) : (
           <p className="message-text">{body}</p>
         )}
-        <p className="message-meta">
-          <time dateTime={time}>{formatTime(time)}</time>
-          {sending && " · Sending..."}
-        </p>
+        {/* The time shows once, on the last message of the group. */}
+        {(groupEnd || sending) && (
+          <p className="message-meta">
+            {groupEnd && <time dateTime={time}>{formatTime(time)}</time>}
+            {groupEnd && sending && " · "}
+            {sending && "Sending..."}
+          </p>
+        )}
       </div>
       {failure && (
         <div className="message-failed">
@@ -145,41 +164,46 @@ export function MessageList({ messages, pending, displayName, historyEndId, onRe
     }
   };
 
+  const entries: Entry[] = [];
+  for (const message of messages) {
+    entries.push({
+      key: message.clientId,
+      author: message.authorName,
+      mine: message.authorName === displayName,
+      isNew: message.id > historyEndId,
+      body: message.body,
+      time: message.createdAt,
+      sending: false,
+    });
+  }
+  for (const message of pending) {
+    entries.push({
+      key: message.clientId,
+      author: displayName,
+      mine: true,
+      isNew: true,
+      body: message.body,
+      time: message.queuedAt,
+      sending: message.status === "sending",
+      failure: message.status === "failed" ? message.failure : undefined,
+      onRetry: () => onRetry(message),
+    });
+  }
+
   // One list, keyed by clientId, so a pending message that is confirmed keeps its element and
   // does not slide in twice.
   const items: ReactNode[] = [];
-  let previousAuthor: string | null = null;
-  for (const message of messages) {
+  for (let index = 0; index < entries.length; index++) {
+    const { key, ...entry } = entries[index];
+    const next = entries[index + 1];
     items.push(
       <MessageItem
-        key={message.clientId}
-        author={message.authorName}
-        mine={message.authorName === displayName}
-        groupStart={message.authorName !== previousAuthor}
-        isNew={message.id > historyEndId}
-        body={message.body}
-        time={message.createdAt}
-        sending={false}
+        key={key}
+        {...entry}
+        groupStart={startsGroup(entries[index - 1], entries[index])}
+        groupEnd={!next || startsGroup(entries[index], next)}
       />,
     );
-    previousAuthor = message.authorName;
-  }
-  for (const message of pending) {
-    items.push(
-      <MessageItem
-        key={message.clientId}
-        author={displayName}
-        mine
-        groupStart={displayName !== previousAuthor}
-        isNew
-        body={message.body}
-        time={message.queuedAt}
-        sending={message.status === "sending"}
-        failure={message.status === "failed" ? message.failure : undefined}
-        onRetry={() => onRetry(message)}
-      />,
-    );
-    previousAuthor = displayName;
   }
 
   return (

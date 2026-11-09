@@ -335,16 +335,22 @@ textarea:hover {
   min-height: 0;
 }
 
+/* A column, so a short conversation can sit at the bottom (margin-top: auto on the list)
+   while a long one still scrolls from the top. */
 .message-scroll {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 1rem max(1rem, env(safe-area-inset-right)) 1.5rem max(1rem, env(safe-area-inset-left));
+  padding: 1rem max(1rem, env(safe-area-inset-right)) 1rem max(1rem, env(safe-area-inset-left));
 }
 
 .messages {
+  box-sizing: border-box;
+  width: 100%;
   max-width: 48rem;
-  margin: 0 auto;
+  margin: auto auto 0;
   padding: 0;
   list-style: none;
 }
@@ -353,9 +359,14 @@ textarea:hover {
   outline-offset: 0.5rem;
 }
 
+/* Without messages the note takes all the free space, so it is centred. */
+.messages:empty {
+  margin-top: 0;
+}
+
+/* "Loading messages..." and "No messages yet.", centred in the list area. */
 .empty-note {
-  max-width: 48rem;
-  margin: 1rem auto 0;
+  margin: auto;
   color: var(--muted);
   text-align: center;
 }
