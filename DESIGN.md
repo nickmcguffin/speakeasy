@@ -81,8 +81,8 @@ The server serves the built client from `client/dist` whenever that folder exist
 
 ### Join a room
 1. Client reads the key from `location.hash` and imports it with `crypto.subtle.importKey` (AES-GCM, not extractable, encrypt and decrypt only). The key must be exactly the 43 base64url characters that `generateKey` makes: 32 bytes, no padding, no `+` or `/`, no whitespace. If the key is missing or invalid, the client shows the "incomplete link" screen and stops, with no room lookup and no socket. Changing only the fragment in the address bar does not reload the page, so the client listens for `hashchange` and starts a fresh room screen with the new key.
-2. Client checks `GET /api/rooms/:roomId`. A 404 shows the "room not found" screen before the user types a name. Otherwise the client decrypts the room name with the key and shows it in the heading, with the tab title `<name> | Speakeasy`. A room with no name, or a name that does not decrypt (for example with a wrong key), shows "Untitled room" and the page works as normal. The title goes back to "Speakeasy" when the room screen closes.
-3. Client gets the display name from local storage, or asks for it.
+2. Client checks `GET /api/rooms/:roomId`. While it runs, the screen already has its final layout (see "Room loading" in section 12). A 404 replaces it with the "room not found" screen. Otherwise the client decrypts the room name with the key and shows it in the heading, with the tab title `<name> | Speakeasy`. A room with no name, or a name that does not decrypt (for example with a wrong key), shows "Untitled room" and the page works as normal. The title goes back to "Speakeasy" when the room screen closes.
+3. Client gets the display name from local storage, or asks for it. The name prompt shows at once, with an empty heading until the room name is decrypted, and a 404 replaces it.
 4. Client emits `room:join { roomId, displayName, browserToken }`. The browser token is described in "Presence".
 5. Server validates and leaves any other room the socket was already in, then sends `room:presence` to that room. It puts the socket in the Socket.IO room and stores `roomId`, `displayName`, `browserToken` and a join counter on `socket.data`. It joins before it loads, so a message sent in between is not missed. A duplicate from that overlap is dropped by id on the client.
 6. If loading the messages fails, the socket leaves the room and its join data is cleared before the `SERVER_ERROR` ack, so it is not counted in presence and cannot send.
@@ -290,6 +290,8 @@ type RoomState = {
 - Local storage holds only the display name, the browser token and the theme choice (`speakeasy:theme`, only "light" or "dark", absent until the user uses the toggle). Session storage is not used.
 - `ChatRoom` owns the socket and the reducer, and renders `RoomHeader`, `MessageList`, `Composer` and `ParticipantPanel`. A pending message keeps its `queuedAt` time until the server's time arrives, and its `failure` decides the text and whether Retry shows.
 - `linkSaved` becomes true after a successful copy of the link, for the leave confirmation (not built yet).
+- `historyLoaded` becomes true with the first join ack. Until then the list shows no "No messages yet.".
+- Until the room lookup has found the room, `ChatRoom` gets `roomName` and `roomKey` as null: it shows the room layout and does not connect.
 - Your own messages are the ones whose author name is your display name, so they also include messages from another person with the same name (see Known limits in the README).
 - On a disconnect the list is kept as it was, with "(you)" still on the old entry, until the first `room:presence` after the rejoin. The room screen shows the count and the names, and nothing before the first list arrives.
 
@@ -369,9 +371,9 @@ Light and dark mode follow the system setting until the user chooses one with th
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `bg` | `#F3F5F3` | `#121815` | Page |
+| `bg` | `#E8EDE9` | `#121815` | Page, initials avatars of other people |
 | `surface` | `#FFFFFF` | `#1B231F` | Header, composer bar, other people's messages |
-| `divider` | `#E1E7E3` | `#2B3530` | Lines between header, messages and composer |
+| `divider` | `#CAD4CE` | `#2B3530` | Lines between header, messages and composer. In dark mode also the edge of other people's messages |
 | `text` | `#17201B` | `#E6EDE8` | Main text |
 | `muted` | `#5C6660` | `#9AA59F` | Names, times, help text, placeholders |
 | `field-border` | `#73897D` | `#5F7468` | Edge of input fields (3:1 or more) |
@@ -384,7 +386,7 @@ Light and dark mode follow the system setting until the user chooses one with th
 All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
 
 ### Type
-- Instrument Sans for all text, self-hosted (no request to a font service, because the app is about privacy). The `@fontsource-variable/instrument-sans` package provides the variable font (weights 400 to 700), and Vite bundles its files with the client.
+- Instrument Sans for all text, self-hosted (no request to a font service, because the app is about privacy). The `@fontsource-variable/instrument-sans` package provides the variable font (weights 400 to 700), and Vite bundles its files with the client. index.html preloads the Latin font file, and `main.tsx` waits for the face (at most 300 ms) before the first render, so the text never changes font after the first paint.
 - Monospace only for the room link in the share panel, because the key is a token that users must see exactly.
 - Hierarchy from size and weight. Sentence case. No all-caps labels.
 
@@ -393,10 +395,11 @@ All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
 - Home: no header content on the right. One narrow column, centred, with left-aligned text: the heading "Private rooms for quick conversations", one line about encryption, the field "Room name (optional)", and "Create a room".
 - Room: the header holds the room name (or "Untitled room") with the connection status under it, then the participant button, "Copy link" and "Leave room", in that order. On mobile: the logo mark only, a shortened room name, and icon buttons with aria-labels. Below the header: the message list, then the composer bar fixed at the bottom.
 - Room name: the room heading and the tab title show it, or "Untitled room".
-- Participant list: on desktop (900px and wider), a narrow side panel that is always visible, so the header has no participant button. On mobile, the participant button ("3") opens the list as a panel over the messages.
+- Participant list: on desktop (900px and wider), a narrow side panel that is always visible, so the header has no participant button. On mobile, the participant button ("3") opens the list as a panel over the messages, with a backdrop.
 - Each participant has an initials avatar (accent for your own entry, `bg` for others) and the panel has a "Participants" heading with the count.
 - Share panel: at the top of the message list while the room has no messages. It shows the full link in monospace with the part after # highlighted, the line "The part after # is the key. It never leaves your browser.", and "Copy link" (and "Share" where the Web Share API is available). After the first message, the panel goes away, and "Copy link" in the header is the way to share.
-- Messages: yours on the right in `accent`, other people's on the left in `surface`. The name shows only on the first message in a group from the same person.
+- Messages: yours on the right in `accent`, other people's on the left in `surface` (with a `divider` edge in dark mode only). The name shows on the first message of each group of other people's messages, and the time once, on the last message of a group (see "Message groups").
+- Short conversations sit at the bottom of the list, next to the composer. The list has `margin-top: auto` inside the scrolling column, so a long list still scrolls normally.
 - "Leave room" (secondary button, last in the header) closes the connection and goes to the home page. The room and its messages stay. The browser Back button returns to the room, because the full link is in the history.
 - Leaving (the "Leave room" button or the logo link) asks for confirmation only when this tab created the room and the link was not copied or shared. The dialog offers "Copy link and leave", "Leave anyway" and "Stay". It uses the native dialog element; Escape means "Stay".
 - Theme toggle in the header on every screen, before "Leave room" in the room. The first visit follows the system setting. The button switches between light and dark and saves the choice in local storage (`speakeasy:theme`). An inline script in index.html applies it before the first paint, so the page never shows the wrong theme first.
@@ -414,10 +417,19 @@ All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
 - One state screen component (`StateScreen`: title, one or two sentences, optional action button) for: incomplete link, room not found, page not found, cannot encrypt, could not load (with Try again). The text says what happened and what to do.
 - Connection status: small dot with text, under the room name. Filled `focus` when connected, filled `danger` when disconnected, an outline while connecting or reconnecting. The text is always there.
 - Room header buttons: the participant button only below 900px, then "Copy link", the theme toggle and "Leave room". Below 640px they show only their icons (the names stay for screen readers) and the logo shows only its mark. A long room name is cut with an ellipsis.
-- Copy link: copies the full link with the Clipboard API. The button says "Copied" for 2 seconds, and a polite live region says "Link copied". If the copy fails, the fallback panel in section 7 shows.
-- Participant panel: below 900px it opens over the messages with focus on its close button. Escape or the close button closes it and focus returns to the participant button.
+- Copy link: copies the full link with the Clipboard API. The button shows a tick and "Copied" for 2 seconds, and a toast "Link copied" shows above the composer for about 2.5 seconds on every screen size. If the copy fails, the fallback panel in section 7 shows instead.
+- Toast (`Toast`): one small component for short confirmations, centred just above the composer, `text` background with `bg` text. Its region has `aria-live="polite"` and stays in the page, so screen readers hear each message.
+- Participant panel: a "Participants" heading (h2) with the count after it in `muted`. On mobile it is the panel title, next to the close button. Each entry has an initials avatar (`aria-hidden`): a circle with the first character of the first two words of the name (by code point, so an emoji stays whole). Other people: `bg` fill with `text` initials. You: `accent` fill with `on-accent` initials.
+- Participant panel below 900px: the participant button is a toggle (`aria-expanded`) that opens and closes it. It opens over the messages with a semi-transparent backdrop and focus on its close button. Escape, the close button, the participant button or a click on the backdrop closes it, and focus returns to the participant button.
 - Composer: the message field and the round send button. When not connected, the send button is disabled and a `muted` line above the field says why ("Connecting...", "Reconnecting..." or "Disconnected. Reload the page to reconnect."). The 2,000-character error shows above the field in `danger`.
-- Empty room: "No messages yet." in `muted` (the share panel replaces it later).
+- Empty room: "No messages yet." in `muted`, centred in the list, only after the join ack (the share panel replaces it later).
+
+### Room loading
+- A room link shows the room layout at once: the app header with an empty room name, an empty list, and the composer with "Connecting..." and Send disabled. There is no separate loading screen.
+- The room name fills in when it is decrypted: the name, or "Untitled room" when there is none. "Untitled room" never shows before a real name.
+- "Loading messages...", centred in the list, shows only when the history takes longer than 300 ms.
+- The history renders in one pass, with no slide-in, and the scroll position is set in `useLayoutEffect` before the paint.
+- State screens (incomplete link, room not found, could not load) and the first-visit name prompt replace the layout when needed.
 
 ### Message states
 - Sending: a "Sending..." label in `muted` next to the time. The message text keeps full contrast (no lower opacity).
@@ -425,6 +437,11 @@ All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
 - Decrypt failure: "Unable to decrypt this message" in `muted` italics.
 - On your own messages the time and labels use `on-accent-muted`.
 - Long words and links wrap anywhere (`overflow-wrap: anywhere`), and line breaks are kept.
+
+### Message groups
+- A new group starts when the author changes, or when more than 2 minutes pass between two messages (`groupGapMs` in `MessageList.tsx`). After step 7e, an event between two messages also starts one.
+- The first message of a group of other people's messages shows the name, also when a pause started the group.
+- The time shows once per group, on its last message. A sending message always shows "Sending...", with the time when it is the last of its group.
 
 ### Scrolling
 - The list opens at the bottom. A new message keeps it at the bottom when it was already there (within 48px).
