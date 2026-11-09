@@ -13,6 +13,7 @@ import { navigate } from "./navigation";
 import { ParticipantPanel } from "./ParticipantPanel";
 import { failuresBeforeErrorScreen, retryDelayMs } from "./retry";
 import { RoomHeader } from "./RoomHeader";
+import { SharePanel } from "./SharePanel";
 import { StateScreen } from "./StateScreen";
 import { Toast, type ToastMessage } from "./Toast";
 import { type ChatRecord, initialRoomState, type PendingMessage, roomReducer } from "./roomState";
@@ -21,6 +22,7 @@ type ChatSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 type SendableMessage = Pick<PendingMessage, "clientId" | "body" | "ciphertext" | "iv">;
 
 const ackTimeoutMs = 10_000;
+const copiedMs = 2000;
 // "Loading messages..." shows only when the history takes longer than this.
 const loadingNoteDelayMs = 300;
 
@@ -69,6 +71,11 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, lookupRetryin
   const [panelOpen, setPanelOpen] = useState(false);
   const [loadingIsSlow, setLoadingIsSlow] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [copied, setCopied] = useState(false);
+  // Set when the Clipboard API fails: the link, shown under the header to copy by hand.
+  const [fallbackLink, setFallbackLink] = useState<string | null>(null);
+  // The button that started the copy, for focus when the fallback panel closes.
+  const copyTriggerRef = useRef<HTMLElement | null>(null);
   const panelId = useId();
   const participantButtonRef = useRef<HTMLButtonElement>(null);
   const composerRef = useRef<ComposerHandle>(null);
@@ -84,6 +91,14 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, lookupRetryin
     const timer = setTimeout(() => setLoadingIsSlow(true), loadingNoteDelayMs);
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    if (!copied) {
+      return;
+    }
+    const timer = setTimeout(() => setCopied(false), copiedMs);
+    return () => clearTimeout(timer);
+  }, [copied]);
 
   useEffect(() => {
     if (!roomKey) {
@@ -233,18 +248,47 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, lookupRetryin
     }
   };
 
-  const handleLinkSaved = () => {
+  const saveLink = () => {
     dispatch({ type: "linkSaved" });
-    setToast({ id: Date.now(), text: "Link copied" });
   };
 
-  let listNote: string | null = null;
-  if (!state.historyLoaded) {
-    listNote = loadingIsSlow ? "Loading messages..." : null;
-  } else if (state.pending.length === 0 && !state.messages.some((record) => record.kind === "message")) {
-    // Join and leave events alone do not count as a conversation.
-    listNote = "No messages yet.";
-  }
+  // One copy for the header, the share panel and the leave dialog. The link is the page address,
+  // which includes the key after #. Returns false when the fallback panel had to show it.
+  const copyLink = async (trigger: HTMLElement | null) => {
+    const link = location.href;
+    copyTriggerRef.current = trigger;
+    try {
+      await navigator.clipboard.writeText(link);
+    } catch {
+      setFallbackLink(link);
+      return false;
+    }
+    setFallbackLink(null);
+    setCopied(true);
+    setToast({ id: Date.now(), text: "Link copied" });
+    saveLink();
+    return true;
+  };
+
+  const closeFallback = () => {
+    setFallbackLink(null);
+    copyTriggerRef.current?.focus();
+  };
+
+  // An AbortError means the user closed the share sheet: not an error, and nothing was shared.
+  const shareLink = async () => {
+    try {
+      await navigator.share({ url: location.href });
+    } catch {
+      return;
+    }
+    saveLink();
+  };
+
+  // The share panel shows from the join ack until the first message. Events do not count.
+  const hasMessages = state.pending.length > 0 || state.messages.some((record) => record.kind === "message");
+  const showSharePanel = state.historyLoaded && !hasMessages;
+  const listNote = !state.historyLoaded && loadingIsSlow ? "Loading messages..." : null;
 
   // The hooks above stay mounted behind these screens, so the retries go on.
   if (roomGone) {
@@ -277,8 +321,11 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, lookupRetryin
         panelId={panelId}
         panelOpen={panelOpen}
         participantButtonRef={participantButtonRef}
+        copied={copied}
+        fallbackLink={fallbackLink}
         onTogglePanel={handleTogglePanel}
-        onLinkSaved={handleLinkSaved}
+        onCopy={copyLink}
+        onCloseFallback={closeFallback}
         onLeave={handleLeave}
       />
       <main className="room-body">
@@ -290,6 +337,11 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, lookupRetryin
             presenceKey={state.presenceKey}
             historyEndId={historyEndId}
             note={listNote}
+            top={
+              showSharePanel && (
+                <SharePanel link={location.href} copied={copied} onCopy={copyLink} onShare={shareLink} />
+              )
+            }
             toast={<Toast message={toast} onDismiss={() => setToast(null)} />}
             onRetry={handleRetry}
             onTypeToComposer={(text) => composerRef.current?.focusAndType(text)}

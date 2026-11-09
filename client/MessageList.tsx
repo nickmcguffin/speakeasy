@@ -97,7 +97,8 @@ type MessageListProps = {
   displayName: string;
   presenceKey: string | null; // this browser's author key: its messages and events are "yours"
   historyEndId: number; // messages up to this id came with a join and do not slide in
-  note: string | null; // "Loading messages..." or "No messages yet.", centred in the list
+  note: string | null; // "Loading messages...", centred in the list
+  top: ReactNode; // the share panel while the room has no messages
   toast: ReactNode; // shown under "New messages" in one stack above the composer
   onRetry: (message: PendingMessage) => void;
   onTypeToComposer: (text: string) => void; // focuses the composer and adds the text
@@ -110,6 +111,7 @@ export function MessageList({
   presenceKey,
   historyEndId,
   note,
+  top,
   toast,
   onRetry,
   onTypeToComposer,
@@ -287,6 +289,7 @@ export function MessageList({
         role="region"
         aria-label="Conversation"
       >
+        {top}
         {note && <p className="empty-note">{note}</p>}
         <ol className="messages" role="log" aria-label="Messages">
           {items}

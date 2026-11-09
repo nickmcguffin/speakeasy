@@ -392,7 +392,53 @@ textarea:hover {
   margin-top: 0;
 }
 
-/* "Loading messages..." and "No messages yet.", centred in the list area. */
+/* Share panel: at the top of the list until the first message. */
+.share-panel {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 1rem;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+/* The full link in monospace, wrapping anywhere. The key (after #) has a chip fill. */
+.share-link {
+  margin: 0;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.share-key {
+  border-radius: 0.25rem;
+  background: var(--chip);
+  color: var(--text);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.share-note {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.share-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.share-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* "Loading messages...", centred in the list area. */
 .empty-note {
   margin: auto;
   color: var(--muted);
