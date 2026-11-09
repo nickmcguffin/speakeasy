@@ -96,18 +96,6 @@ export function RoomPage({ roomId, encodedKey }: RoomPageProps) {
     setAttempt((count) => count + 1);
   };
 
-  if (room.status === "loading") {
-    return (
-      <>
-        <AppHeader />
-        <main className="page">
-          <p className="lead muted" role="status">
-            Loading room...
-          </p>
-        </main>
-      </>
-    );
-  }
   if (room.status === "incomplete-link") {
     return (
       <StateScreen
@@ -124,7 +112,7 @@ export function RoomPage({ roomId, encodedKey }: RoomPageProps) {
       />
     );
   }
-  if (room.status === "failed" || !room.roomKey) {
+  if (room.status === "failed") {
     return (
       <StateScreen
         title="Could not load the room"
@@ -133,7 +121,10 @@ export function RoomPage({ roomId, encodedKey }: RoomPageProps) {
       />
     );
   }
-  const roomName = room.roomName ?? untitledRoom;
+  // While the lookup runs, the screen already has its final layout. The name fills in once it
+  // is decrypted, so "Untitled room" never shows before a real name.
+  const found = room.status === "found";
+  const roomName = found ? (room.roomName ?? untitledRoom) : null;
   if (!displayName) {
     return (
       <>
@@ -150,7 +141,7 @@ export function RoomPage({ roomId, encodedKey }: RoomPageProps) {
       roomId={roomId}
       roomName={roomName}
       displayName={displayName}
-      roomKey={room.roomKey}
+      roomKey={found ? room.roomKey : null}
       browserToken={browserToken}
     />
   );

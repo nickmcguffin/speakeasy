@@ -89,10 +89,11 @@ type MessageListProps = {
   pending: PendingMessage[];
   displayName: string;
   historyEndId: number; // messages up to this id came with a join and do not slide in
+  note: string | null; // "Loading messages..." or "No messages yet.", centred in the list
   onRetry: (message: PendingMessage) => void;
 };
 
-export function MessageList({ messages, pending, displayName, historyEndId, onRetry }: MessageListProps) {
+export function MessageList({ messages, pending, displayName, historyEndId, note, onRetry }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
   const newMessagesButtonRef = useRef<HTMLButtonElement>(null);
@@ -209,7 +210,7 @@ export function MessageList({ messages, pending, displayName, historyEndId, onRe
   return (
     <div className="message-area">
       <div ref={scrollRef} className="message-scroll" onScroll={handleScroll}>
-        {items.length === 0 && <p className="empty-note">No messages yet.</p>}
+        {note && <p className="empty-note">{note}</p>}
         <ol ref={listRef} className="messages" role="log" aria-label="Messages" tabIndex={-1}>
           {items}
         </ol>

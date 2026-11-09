@@ -18,6 +18,8 @@ type ChatSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 type SendableMessage = Pick<PendingMessage, "clientId" | "body" | "ciphertext" | "iv">;
 
 const ackTimeoutMs = 10_000;
+// "Loading messages..." shows only when the history takes longer than this.
+const loadingNoteDelayMs = 300;
 
 async function decryptMessage(key: RoomKey, message: EncryptedMessage): Promise<ChatMessage> {
   const { ciphertext, iv, ...rest } = message;
@@ -36,11 +38,13 @@ async function decryptMessages(key: RoomKey, messages: EncryptedMessage[]) {
   return decrypted;
 }
 
+// Until the room lookup has found the room, roomName and roomKey are null: the room layout
+// shows at once, with no name and no connection.
 type ChatRoomProps = {
   roomId: string;
-  roomName: string;
+  roomName: string | null;
   displayName: string;
-  roomKey: RoomKey;
+  roomKey: RoomKey | null;
   browserToken: string;
 };
 
@@ -50,6 +54,7 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
   // Messages up to this id arrived with a join (history or catch-up), so they do not slide in.
   const [historyEndId, setHistoryEndId] = useState(0);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [loadingIsSlow, setLoadingIsSlow] = useState(false);
   const panelId = useId();
   const participantButtonRef = useRef<HTMLButtonElement>(null);
   const socketRef = useRef<ChatSocket | null>(null);
@@ -61,6 +66,14 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
   }, [state.messages]);
 
   useEffect(() => {
+    const timer = setTimeout(() => setLoadingIsSlow(true), loadingNoteDelayMs);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!roomKey) {
+      return;
+    }
     // closeOnBeforeunload closes the connection itself when the tab closes or refreshes, so the
     // server is told even when the browser's own close would be lost on the way.
     const socket: ChatSocket = io({ closeOnBeforeunload: true });
@@ -119,7 +132,7 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
   // so the server can recognise it and store the message only once.
   const sendPending = async ({ clientId, body, ciphertext, iv }: SendableMessage) => {
     const socket = socketRef.current;
-    if (!socket) {
+    if (!socket || !roomKey) {
       return;
     }
     try {
@@ -166,6 +179,13 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
     participantButtonRef.current?.focus();
   }, []);
 
+  let listNote: string | null = null;
+  if (!state.historyLoaded) {
+    listNote = loadingIsSlow ? "Loading messages..." : null;
+  } else if (state.messages.length === 0 && state.pending.length === 0) {
+    listNote = "No messages yet.";
+  }
+
   let joinErrorText: string | null = null;
   if (joinError === "ROOM_NOT_FOUND") {
     joinErrorText = "Room not found";
@@ -193,6 +213,7 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
             pending={state.pending}
             displayName={displayName}
             historyEndId={historyEndId}
+            note={listNote}
             onRetry={handleRetry}
           />
           <Composer connection={state.connection} joinError={joinErrorText} onSend={handleSend} />

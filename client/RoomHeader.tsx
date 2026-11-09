@@ -14,7 +14,7 @@ const connectionLabels: Record<ConnectionState, string> = {
 const copiedMs = 2000;
 
 type RoomHeaderProps = {
-  roomName: string;
+  roomName: string | null; // null until the name is decrypted
   connection: ConnectionState;
   participantCount: number;
   panelId: string;
@@ -81,7 +81,7 @@ export function RoomHeader({
     <>
       <AppHeader>
         <div className="room-title">
-          <h1 title={roomName}>{roomName}</h1>
+          <h1 title={roomName ?? undefined}>{roomName}</h1>
           <p className="connection" data-state={connection} role="status">
             <span className="connection-dot" aria-hidden="true" />
             {connectionLabels[connection]}

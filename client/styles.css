@@ -248,6 +248,7 @@ textarea:hover {
 }
 
 .room-title h1 {
+  min-height: 1lh; /* keeps the status line in place while the name is still empty */
   margin: 0;
   overflow: hidden;
   font-size: 1rem;

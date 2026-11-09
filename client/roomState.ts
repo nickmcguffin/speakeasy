@@ -26,6 +26,7 @@ export type RoomState = {
   participants: Participant[]; // the last room:presence list, kept while disconnected
   presenceKey: string | null; // this browser's entry, from the latest join ack
   linkSaved: boolean; // true after the link was copied in this room screen
+  historyLoaded: boolean; // true after the first join ack, which carries the history
 };
 
 export type RoomAction =
@@ -46,6 +47,7 @@ export const initialRoomState: RoomState = {
   participants: [],
   presenceKey: null,
   linkSaved: false,
+  historyLoaded: false,
 };
 
 // Merges by id, so a message that arrives twice (join backfill and broadcast) shows once.
@@ -76,7 +78,7 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
     // The join ack and room:presence can arrive in either order. They set separate fields,
     // and "(you)" is matched when both are there.
     case "joined":
-      return { ...state, connection: "connected", presenceKey: action.presenceKey };
+      return { ...state, connection: "connected", presenceKey: action.presenceKey, historyLoaded: true };
 
     case "presence":
       return { ...state, participants: action.participants };
