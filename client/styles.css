@@ -1,34 +1,29 @@
-/* Tokens from DESIGN.md section 12. Dark mode follows the system setting. */
+/* Tokens from DESIGN.md section 12. light-dark() picks a value from the color-scheme: the system
+   setting, or the theme the user chose, which index.html sets as data-theme on <html>. */
 :root {
   color-scheme: light dark;
-  --bg: #f3f5f3;
-  --surface: #ffffff;
-  --divider: #e1e7e3;
-  --text: #17201b;
-  --muted: #5c6660;
-  --field-border: #73897d;
-  --accent: #1f5c45;
-  --on-accent: #ffffff;
-  --focus: #1f5c45;
-  --danger: #b42318;
+  --bg: light-dark(#f3f5f3, #121815);
+  --surface: light-dark(#ffffff, #1b231f);
+  --divider: light-dark(#e1e7e3, #2b3530);
+  --text: light-dark(#17201b, #e6ede8);
+  --muted: light-dark(#5c6660, #9aa59f);
+  --field-border: light-dark(#73897d, #5f7468);
+  --accent: light-dark(#1f5c45, #1e5a43);
+  --on-accent: light-dark(#ffffff, #e9f2ec);
+  --on-accent-muted: light-dark(#c2d9cd, #bcd3c7);
+  --focus: light-dark(#1f5c45, #7cc9a1);
+  --danger: light-dark(#b42318, #f28b82);
   --font: "Instrument Sans Variable", system-ui, sans-serif;
   --radius: 0.625rem;
   --transition: 150ms ease;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #121815;
-    --surface: #1b231f;
-    --divider: #2b3530;
-    --text: #e6ede8;
-    --muted: #9aa59f;
-    --field-border: #5f7468;
-    --accent: #1e5a43;
-    --on-accent: #e9f2ec;
-    --focus: #7cc9a1;
-    --danger: #f28b82;
-  }
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 body {
