@@ -20,3 +20,4 @@ Read README.md and DESIGN.md before each step. They are the source of truth.
 ## Privacy
 - Never log message content, room names, display names, keys or tokens.
 - The room key never leaves the browser and is never stored.
+- Local storage holds only the display name, the browser token and the theme choice ("light" or "dark"). Session storage is not used.
