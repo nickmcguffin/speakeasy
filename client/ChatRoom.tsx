@@ -12,6 +12,7 @@ import { MessageList } from "./MessageList";
 import { navigate } from "./navigation";
 import { ParticipantPanel } from "./ParticipantPanel";
 import { RoomHeader } from "./RoomHeader";
+import { Toast, type ToastMessage } from "./Toast";
 import { type ChatMessage, initialRoomState, type PendingMessage, roomReducer } from "./roomState";
 
 type ChatSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -55,6 +56,7 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
   const [historyEndId, setHistoryEndId] = useState(0);
   const [panelOpen, setPanelOpen] = useState(false);
   const [loadingIsSlow, setLoadingIsSlow] = useState(false);
+  const [toast, setToast] = useState<ToastMessage | null>(null);
   const panelId = useId();
   const participantButtonRef = useRef<HTMLButtonElement>(null);
   const socketRef = useRef<ChatSocket | null>(null);
@@ -179,6 +181,11 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
     participantButtonRef.current?.focus();
   }, []);
 
+  const handleLinkSaved = () => {
+    dispatch({ type: "linkSaved" });
+    setToast({ id: Date.now(), text: "Link copied" });
+  };
+
   let listNote: string | null = null;
   if (!state.historyLoaded) {
     listNote = loadingIsSlow ? "Loading messages..." : null;
@@ -203,7 +210,7 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
         panelOpen={panelOpen}
         participantButtonRef={participantButtonRef}
         onOpenPanel={() => setPanelOpen(true)}
-        onLinkSaved={() => dispatch({ type: "linkSaved" })}
+        onLinkSaved={handleLinkSaved}
         onLeave={handleLeave}
       />
       <main className="room-body">
@@ -216,6 +223,7 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
             note={listNote}
             onRetry={handleRetry}
           />
+          <Toast message={toast} onDismiss={() => setToast(null)} />
           <Composer connection={state.connection} joinError={joinErrorText} onSend={handleSend} />
         </div>
         <ParticipantPanel

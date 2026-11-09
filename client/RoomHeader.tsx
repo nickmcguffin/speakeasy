@@ -111,9 +111,6 @@ export function RoomHeader({
           </button>
         </div>
       </AppHeader>
-      <p className="visually-hidden" aria-live="polite">
-        {copied ? "Link copied" : ""}
-      </p>
       {fallbackLink && (
         <div className="link-panel" onKeyDown={handleFallbackKeyDown}>
           <label htmlFor={linkFieldId}>Could not copy the link. Select it and copy it by hand.</label>
