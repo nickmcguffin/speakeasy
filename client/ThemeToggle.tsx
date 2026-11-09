@@ -27,6 +27,19 @@ export function ThemeToggle() {
     return () => media.removeEventListener("change", handleChange);
   }, []);
 
+  // A choice made in another tab of this site arrives as a storage event, and applies here at once.
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== storageKey || (event.newValue !== "light" && event.newValue !== "dark")) {
+        return;
+      }
+      document.documentElement.dataset.theme = event.newValue;
+      setTheme(event.newValue);
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
+
   const nextTheme: Theme = theme === "dark" ? "light" : "dark";
 
   const handleClick = () => {

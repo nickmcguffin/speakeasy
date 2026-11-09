@@ -97,7 +97,8 @@ type MessageListProps = {
   displayName: string;
   presenceKey: string | null; // this browser's author key: its messages and events are "yours"
   historyEndId: number; // messages up to this id came with a join and do not slide in
-  note: string | null; // "Loading messages..." or "No messages yet.", centred in the list
+  note: string | null; // "Loading messages...", centred in the list
+  top: ReactNode; // the share panel while the room has no messages
   toast: ReactNode; // shown under "New messages" in one stack above the composer
   onRetry: (message: PendingMessage) => void;
   onTypeToComposer: (text: string) => void; // focuses the composer and adds the text
@@ -110,6 +111,7 @@ export function MessageList({
   presenceKey,
   historyEndId,
   note,
+  top,
   toast,
   onRetry,
   onTypeToComposer,
@@ -123,6 +125,16 @@ export function MessageList({
   const lastMessageId = messages.at(-1)?.id;
   const lastPendingId = pending.at(-1)?.clientId;
   const seenPendingIdRef = useRef(lastPendingId);
+  // Only a new message from someone else offers "New messages". Events and your own messages do not.
+  let lastOtherMessageId: number | undefined;
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const record = messages[index];
+    if (record.kind === "message" && !(record.authorKey !== null && record.authorKey === presenceKey)) {
+      lastOtherMessageId = record.id;
+      break;
+    }
+  }
+  const seenOtherMessageIdRef = useRef(lastOtherMessageId);
 
   const scrollToBottom = () => {
     const scroller = scrollRef.current;
@@ -143,9 +155,10 @@ export function MessageList({
     }
     if (atBottomRef.current) {
       scrollToBottom();
-    } else if (lastMessageId !== undefined) {
+    } else if (lastOtherMessageId !== undefined && lastOtherMessageId !== seenOtherMessageIdRef.current) {
       setHasNewBelow(true);
     }
+    seenOtherMessageIdRef.current = lastOtherMessageId;
   }, [lastMessageId, lastPendingId]);
 
   // The list area shrinks when the composer grows or the mobile keyboard opens. Stay at the bottom.
@@ -276,6 +289,7 @@ export function MessageList({
         role="region"
         aria-label="Conversation"
       >
+        {top}
         {note && <p className="empty-note">{note}</p>}
         <ol className="messages" role="log" aria-label="Messages">
           {items}

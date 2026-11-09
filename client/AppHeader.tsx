@@ -14,17 +14,27 @@ function LogoMark() {
   );
 }
 
-// A plain click stays in the app. A click that opens a new tab or window keeps the browser default.
-function handleHomeClick(event: MouseEvent<HTMLAnchorElement>) {
-  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-    return;
-  }
-  event.preventDefault();
-  navigate("/");
-}
+type AppHeaderProps = {
+  children?: ReactNode;
+  // In a room the logo link leaves it, so the room decides (it may ask first).
+  onLeave?: (trigger: HTMLElement) => void;
+};
 
 // The header on every screen. Without children it holds only the theme toggle on the right.
-export function AppHeader({ children }: { children?: ReactNode }) {
+export function AppHeader({ children, onLeave }: AppHeaderProps) {
+  // A plain click stays in the app. A click that opens a new tab or window keeps the browser default.
+  const handleHomeClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return;
+    }
+    event.preventDefault();
+    if (onLeave) {
+      onLeave(event.currentTarget);
+    } else {
+      navigate("/");
+    }
+  };
+
   return (
     <header className="app-header">
       <a className="logo" href="/" onClick={handleHomeClick}>

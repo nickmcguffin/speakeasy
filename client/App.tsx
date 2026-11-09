@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { isEncryptionAvailable } from "./crypto";
 import { type CreatedRoom, HomePage } from "./HomePage";
+import type { RoomEntryState } from "./navigation";
 import { RoomPage } from "./RoomPage";
 import { StateScreen } from "./StateScreen";
 
@@ -25,9 +26,11 @@ export function App() {
     };
   }, []);
 
-  // The key travels only in the fragment, which browsers never send to the server.
+  // The key travels only in the fragment, which browsers never send to the server. The history
+  // entry remembers that this tab created the room, for the leave dialog.
   const handleRoomCreated = ({ roomId, encodedKey }: CreatedRoom) => {
-    history.pushState(null, "", `/r/${roomId}#${encodedKey}`);
+    const entryState: RoomEntryState = { createdHere: true, linkSaved: false };
+    history.pushState(entryState, "", `/r/${roomId}#${encodedKey}`);
     setCurrent(readLocation());
   };
 

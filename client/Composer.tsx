@@ -25,18 +25,18 @@ export type ComposerHandle = { focusAndType: (text: string) => void };
 
 type ComposerProps = {
   connection: ConnectionState;
-  joinError: string | null;
+  blockedReason: string | null; // why sending is off even with a connection, shown above the field
   onSend: (body: string) => void;
   ref?: Ref<ComposerHandle>;
 };
 
-export function Composer({ connection, joinError, onSend, ref }: ComposerProps) {
+export function Composer({ connection, blockedReason, onSend, ref }: ComposerProps) {
   const [draft, setDraft] = useState("");
   const [draftError, setDraftError] = useState<string | null>(null);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   const fieldId = useId();
   const errorId = useId();
-  const canSend = connection === "connected";
+  const canSend = connection === "connected" && !blockedReason;
 
   // Setting the value moves the caret to the end, after the added text.
   useImperativeHandle(ref, () => ({
@@ -94,10 +94,8 @@ export function Composer({ connection, joinError, onSend, ref }: ComposerProps) 
   return (
     <form className="composer" onSubmit={handleSubmit}>
       <div className="composer-inner">
-        {joinError ? (
-          <p role="alert" className="error composer-note">
-            {joinError}
-          </p>
+        {blockedReason ? (
+          <p className="muted composer-note">{blockedReason}</p>
         ) : (
           connectionNote && <p className="muted composer-note">{connectionNote}</p>
         )}
@@ -117,6 +115,7 @@ export function Composer({ connection, joinError, onSend, ref }: ComposerProps) 
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={handleKeyDown}
             rows={1}
+            disabled={blockedReason !== null}
             placeholder="Message"
             aria-invalid={draftError !== null}
             aria-describedby={draftError ? errorId : undefined}

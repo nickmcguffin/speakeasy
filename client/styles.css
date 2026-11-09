@@ -119,6 +119,13 @@ textarea:hover {
   border-color: var(--muted);
 }
 
+/* A disabled field (sending is off): the edge goes quiet, the placeholder keeps its contrast. */
+:is(input, textarea):disabled {
+  border-color: var(--divider);
+  background: var(--bg);
+  cursor: not-allowed;
+}
+
 :is(input, textarea)[aria-invalid="true"] {
   border-color: var(--danger);
 }
@@ -392,7 +399,103 @@ textarea:hover {
   margin-top: 0;
 }
 
-/* "Loading messages..." and "No messages yet.", centred in the list area. */
+/* Wrong-key banner, above the message list. */
+.banner {
+  margin: 0;
+  padding: 0.75rem max(1rem, env(safe-area-inset-right)) 0.75rem max(1rem, env(safe-area-inset-left));
+  border-bottom: 1px solid var(--divider);
+  background: var(--surface);
+  color: var(--danger);
+  font-weight: 600;
+  text-align: center;
+}
+
+/* Leave dialog: a native modal <dialog>. */
+.leave-dialog {
+  box-sizing: border-box;
+  width: min(32rem, calc(100vw - 2rem));
+  padding: 1.5rem;
+  border: 1px solid var(--divider);
+  border-radius: 0.875rem;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.25);
+}
+
+.leave-dialog::backdrop {
+  background: rgb(0 0 0 / 0.45);
+}
+
+.leave-dialog h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.25rem;
+  font-weight: 650;
+}
+
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+@media (max-width: 479.98px) {
+  .dialog-actions {
+    flex-direction: column;
+  }
+
+  .dialog-actions button {
+    width: 100%;
+  }
+}
+
+/* Share panel: at the top of the list until the first message. */
+.share-panel {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 1rem;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+/* The full link in monospace, wrapping anywhere. The key (after #) has a chip fill. */
+.share-link {
+  margin: 0;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.share-key {
+  border-radius: 0.25rem;
+  background: var(--chip);
+  color: var(--text);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.share-note {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.share-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.share-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* "Loading messages...", centred in the list area. */
 .empty-note {
   margin: auto;
   color: var(--muted);
@@ -420,14 +523,20 @@ textarea:hover {
 
 /* "Bob joined the room": small, centred and muted. Not a bubble, no time. */
 .event {
-  margin: 1rem 0;
+  margin: 0;
   color: var(--muted);
   font-size: 0.8125rem;
   text-align: center;
 }
 
-.event:first-child {
-  margin-top: 0;
+/* The normal gap between an event and a message, and 4px between two events in a row. A message
+   after an event starts a group, which has its own 1rem gap. */
+.messages > * + .event {
+  margin-top: 1rem;
+}
+
+.messages > .event + .event {
+  margin-top: 0.25rem;
 }
 
 .event.new {

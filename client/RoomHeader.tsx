@@ -1,5 +1,5 @@
 import { Check, Link, LogOut, Users, X } from "lucide-react";
-import { type KeyboardEvent, type RefObject, useEffect, useId, useRef, useState } from "react";
+import { type KeyboardEvent, type RefObject, useEffect, useId, useRef } from "react";
 import { AppHeader } from "./AppHeader";
 import type { ConnectionState } from "./roomState";
 import { ThemeToggle } from "./ThemeToggle";
@@ -11,8 +11,6 @@ const connectionLabels: Record<ConnectionState, string> = {
   disconnected: "Disconnected",
 };
 
-const copiedMs = 2000;
-
 type RoomHeaderProps = {
   roomName: string | null; // null until the name is decrypted
   connection: ConnectionState;
@@ -20,9 +18,12 @@ type RoomHeaderProps = {
   panelId: string;
   panelOpen: boolean;
   participantButtonRef: RefObject<HTMLButtonElement | null>;
+  copied: boolean; // "Copied" with a tick for 2 seconds after a successful copy
+  fallbackLink: string | null; // set when the Clipboard API failed: the link to copy by hand
   onTogglePanel: () => void;
-  onLinkSaved: () => void;
-  onLeave: () => void;
+  onCopy: (trigger: HTMLElement) => void;
+  onCloseFallback: () => void;
+  onLeave: (trigger: HTMLElement) => void; // the Leave room button and the logo link
 };
 
 export function RoomHeader({
@@ -32,45 +33,27 @@ export function RoomHeader({
   panelId,
   panelOpen,
   participantButtonRef,
+  copied,
+  fallbackLink,
   onTogglePanel,
-  onLinkSaved,
+  onCopy,
+  onCloseFallback,
   onLeave,
 }: RoomHeaderProps) {
-  const [copied, setCopied] = useState(false);
-  // Set when the Clipboard API fails, so the user can copy the link by hand.
-  const [fallbackLink, setFallbackLink] = useState<string | null>(null);
-  const copyButtonRef = useRef<HTMLButtonElement>(null);
+  const linkFieldRef = useRef<HTMLInputElement>(null);
   const linkFieldId = useId();
 
+  // The field takes focus after the commit, so it also works when a modal dialog closes in the
+  // same update (a field inside an inert page cannot take focus).
   useEffect(() => {
-    if (!copied) {
-      return;
+    if (fallbackLink) {
+      linkFieldRef.current?.focus();
     }
-    const timer = setTimeout(() => setCopied(false), copiedMs);
-    return () => clearTimeout(timer);
-  }, [copied]);
-
-  // The link is the page address, which includes the key after #.
-  const handleCopy = async () => {
-    const link = location.href;
-    try {
-      await navigator.clipboard.writeText(link);
-      setFallbackLink(null);
-      setCopied(true);
-      onLinkSaved();
-    } catch {
-      setFallbackLink(link);
-    }
-  };
-
-  const closeFallback = () => {
-    setFallbackLink(null);
-    copyButtonRef.current?.focus();
-  };
+  }, [fallbackLink]);
 
   const handleFallbackKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") {
-      closeFallback();
+      onCloseFallback();
     }
   };
 
@@ -79,7 +62,7 @@ export function RoomHeader({
 
   return (
     <>
-      <AppHeader>
+      <AppHeader onLeave={onLeave}>
         <div className="room-title">
           <h1 title={roomName ?? undefined}>{roomName}</h1>
           <p className="connection" data-state={connection} role="status">
@@ -100,12 +83,12 @@ export function RoomHeader({
             <Users size={18} aria-hidden="true" />
             {participantCount}
           </button>
-          <button ref={copyButtonRef} type="button" className="secondary" onClick={handleCopy} aria-label={copyLabel}>
+          <button type="button" className="secondary" onClick={(event) => onCopy(event.currentTarget)} aria-label={copyLabel}>
             {copied ? <Check size={18} aria-hidden="true" /> : <Link size={18} aria-hidden="true" />}
             <span className="button-label">{copyLabel}</span>
           </button>
           <ThemeToggle />
-          <button type="button" className="secondary" onClick={onLeave} aria-label="Leave room">
+          <button type="button" className="secondary" onClick={(event) => onLeave(event.currentTarget)} aria-label="Leave room">
             <LogOut size={18} aria-hidden="true" />
             <span className="button-label">Leave room</span>
           </button>
@@ -116,14 +99,14 @@ export function RoomHeader({
           <label htmlFor={linkFieldId}>Could not copy the link. Select it and copy it by hand.</label>
           <div className="link-panel-row">
             <input
+              ref={linkFieldRef}
               id={linkFieldId}
               className="link-field"
               value={fallbackLink}
               readOnly
-              autoFocus
               onFocus={(event) => event.target.select()}
             />
-            <button type="button" className="secondary icon-button" onClick={closeFallback} aria-label="Close">
+            <button type="button" className="secondary icon-button" onClick={onCloseFallback} aria-label="Close">
               <X size={18} aria-hidden="true" />
             </button>
           </div>
