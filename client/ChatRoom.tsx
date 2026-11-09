@@ -6,7 +6,7 @@ import type {
   ErrorCode,
   ServerToClientEvents,
 } from "../shared/types.js";
-import { Composer } from "./Composer";
+import { Composer, type ComposerHandle } from "./Composer";
 import { decrypt, encrypt, type RoomKey } from "./crypto";
 import { MessageList } from "./MessageList";
 import { navigate } from "./navigation";
@@ -59,6 +59,7 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const panelId = useId();
   const participantButtonRef = useRef<HTMLButtonElement>(null);
+  const composerRef = useRef<ComposerHandle>(null);
   const socketRef = useRef<ChatSocket | null>(null);
   // Read by the connect handler, which is set up once, so it cannot read state directly.
   const lastMessageIdRef = useRef<number | undefined>(undefined);
@@ -231,8 +232,9 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
             note={listNote}
             toast={<Toast message={toast} onDismiss={() => setToast(null)} />}
             onRetry={handleRetry}
+            onTypeToComposer={(text) => composerRef.current?.focusAndType(text)}
           />
-          <Composer connection={state.connection} joinError={joinErrorText} onSend={handleSend} />
+          <Composer ref={composerRef} connection={state.connection} joinError={joinErrorText} onSend={handleSend} />
         </div>
         {/* Below 900px the open panel covers the messages. A click on the backdrop closes it. */}
         {panelOpen && <div className="panel-backdrop" onClick={closePanel} aria-hidden="true" />}

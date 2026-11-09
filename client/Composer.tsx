@@ -1,5 +1,14 @@
 import { SendHorizontal } from "lucide-react";
-import { type KeyboardEvent, type SubmitEvent, useId, useLayoutEffect, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  type Ref,
+  type SubmitEvent,
+  useId,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type { ConnectionState } from "./roomState";
 
 const maxMessageLength = 2000;
@@ -11,19 +20,33 @@ const connectionNotes: Record<ConnectionState, string | null> = {
   disconnected: "Disconnected. Reload the page to reconnect.",
 };
 
+// Lets the message list send keystrokes here: focus the field and add text at the end.
+export type ComposerHandle = { focusAndType: (text: string) => void };
+
 type ComposerProps = {
   connection: ConnectionState;
   joinError: string | null;
   onSend: (body: string) => void;
+  ref?: Ref<ComposerHandle>;
 };
 
-export function Composer({ connection, joinError, onSend }: ComposerProps) {
+export function Composer({ connection, joinError, onSend, ref }: ComposerProps) {
   const [draft, setDraft] = useState("");
   const [draftError, setDraftError] = useState<string | null>(null);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   const fieldId = useId();
   const errorId = useId();
   const canSend = connection === "connected";
+
+  // Setting the value moves the caret to the end, after the added text.
+  useImperativeHandle(ref, () => ({
+    focusAndType(text: string) {
+      fieldRef.current?.focus();
+      if (text) {
+        setDraft((current) => current + text);
+      }
+    },
+  }), []);
 
   // The field grows with its text. CSS caps it at about 5 lines, and then it scrolls.
   useLayoutEffect(() => {

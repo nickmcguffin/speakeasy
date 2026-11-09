@@ -1,5 +1,5 @@
 import { ArrowDown } from "lucide-react";
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ChatMessage, PendingMessage, SendFailure } from "./roomState";
 
 const failureText: Record<SendFailure, string> = {
@@ -92,11 +92,20 @@ type MessageListProps = {
   note: string | null; // "Loading messages..." or "No messages yet.", centred in the list
   toast: ReactNode; // shown under "New messages" in one stack above the composer
   onRetry: (message: PendingMessage) => void;
+  onTypeToComposer: (text: string) => void; // focuses the composer and adds the text
 };
 
-export function MessageList({ messages, pending, displayName, historyEndId, note, toast, onRetry }: MessageListProps) {
+export function MessageList({
+  messages,
+  pending,
+  displayName,
+  historyEndId,
+  note,
+  toast,
+  onRetry,
+  onTypeToComposer,
+}: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const listRef = useRef<HTMLOListElement>(null);
   const newMessagesButtonRef = useRef<HTMLButtonElement>(null);
   // Updated on scroll, so it describes the list before the latest render added anything.
   const atBottomRef = useRef(true);
@@ -162,7 +171,24 @@ export function MessageList({ messages, pending, displayName, historyEndId, note
     const hadFocus = document.activeElement === newMessagesButtonRef.current;
     scrollToBottom();
     if (hadFocus) {
-      listRef.current?.focus({ preventScroll: true });
+      scrollRef.current?.focus({ preventScroll: true });
+    }
+  };
+
+  // The list is focusable so the keyboard can scroll it, and a click in it focuses it. Typing
+  // there goes to the composer: Enter moves focus, and a printable character is also added to the
+  // draft. Space, arrows, Page Up/Down, Home, End, Tab and shortcuts such as Ctrl+C keep their
+  // normal behaviour. Keys on a control inside the list (Retry) are left alone.
+  const handleListKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget || event.ctrlKey || event.metaKey || event.altKey || event.nativeEvent.isComposing) {
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      onTypeToComposer("");
+    } else if (event.key.length === 1 && event.key !== " ") {
+      event.preventDefault();
+      onTypeToComposer(event.key);
     }
   };
 
@@ -210,9 +236,17 @@ export function MessageList({ messages, pending, displayName, historyEndId, note
 
   return (
     <div className="message-area">
-      <div ref={scrollRef} className="message-scroll" onScroll={handleScroll}>
+      <div
+        ref={scrollRef}
+        className="message-scroll"
+        onScroll={handleScroll}
+        onKeyDown={handleListKeyDown}
+        tabIndex={0}
+        role="region"
+        aria-label="Conversation"
+      >
         {note && <p className="empty-note">{note}</p>}
-        <ol ref={listRef} className="messages" role="log" aria-label="Messages" tabIndex={-1}>
+        <ol className="messages" role="log" aria-label="Messages">
           {items}
         </ol>
       </div>

@@ -382,8 +382,9 @@ textarea:hover {
   list-style: none;
 }
 
-.messages:focus-visible {
-  outline-offset: 0.5rem;
+/* The focused list shows its ring inside its edges. */
+.message-scroll:focus-visible {
+  outline-offset: -2px;
 }
 
 /* Without messages the note takes all the free space, so it is centred. */
