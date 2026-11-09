@@ -143,10 +143,12 @@ textarea:hover {
   font-size: 1.125rem;
 }
 
-/* One narrow, left-aligned column for the home page, the name prompt and the state screens. */
+/* One narrow column for the home page, the name prompt and the state screens: centred, with
+   left-aligned text, and a fixed distance from the top, so an error below does not move it. */
 .page {
-  max-width: 26rem;
-  padding: clamp(3rem, 14vh, 8rem) clamp(1.25rem, 6vw, 6rem) 3rem;
+  max-width: 28rem;
+  margin-inline: auto;
+  padding: min(18vh, 160px) 1.25rem 3rem;
 }
 
 .page > :is(form, button) {
