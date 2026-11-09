@@ -10,6 +10,17 @@ export default defineConfig({
         extends: true,
         test: { name: "unit", include: ["tests/unit/**/*.test.{ts,tsx}"] },
       },
+      {
+        extends: true,
+        test: {
+          name: "integration",
+          include: ["tests/integration/**/*.test.ts"],
+          globalSetup: "tests/integration/startServer.ts",
+          // The leave event test waits for the server's 5-second timer.
+          testTimeout: 15_000,
+          hookTimeout: 60_000,
+        },
+      },
     ],
   },
 });
