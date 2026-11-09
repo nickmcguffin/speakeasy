@@ -5,6 +5,7 @@
   --bg: light-dark(#e8ede9, #121815);
   --surface: light-dark(#ffffff, #1b231f);
   --divider: light-dark(#cad4ce, #2b3530);
+  --chip: light-dark(#e8ede9, #36423b);
   --text: light-dark(#17201b, #e6ede8);
   --muted: light-dark(#5c6660, #9aa59f);
   --field-border: light-dark(#73897d, #5f7468);
@@ -91,9 +92,10 @@ button.secondary:hover {
   background: color-mix(in srgb, var(--text) 7%, transparent);
 }
 
+/* Transparent, so muted text keeps its contrast on any background behind the button. */
 button:disabled {
   border-color: var(--divider);
-  background: var(--bg);
+  background: transparent;
   color: var(--muted);
   cursor: not-allowed;
 }
@@ -614,7 +616,7 @@ button.small {
   box-sizing: border-box;
   padding: 0 0.375rem;
   border-radius: 999px;
-  background: var(--bg);
+  background: var(--chip);
   color: var(--text);
   font-size: 0.75rem;
   font-weight: 600;
@@ -639,7 +641,7 @@ button.small {
   overflow-wrap: anywhere;
 }
 
-/* Initials avatar: bg with text colour for other people, accent for you. */
+/* Initials avatar: chip with text colour for other people, accent for you. */
 .avatar {
   display: inline-flex;
   flex-shrink: 0;
@@ -648,7 +650,7 @@ button.small {
   width: 2rem;
   height: 2rem;
   border-radius: 50%;
-  background: var(--bg);
+  background: var(--chip);
   color: var(--text);
   font-size: 0.8125rem;
   font-weight: 650;
