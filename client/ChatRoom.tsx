@@ -229,9 +229,9 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
             displayName={displayName}
             historyEndId={historyEndId}
             note={listNote}
+            toast={<Toast message={toast} onDismiss={() => setToast(null)} />}
             onRetry={handleRetry}
           />
-          <Toast message={toast} onDismiss={() => setToast(null)} />
           <Composer connection={state.connection} joinError={joinErrorText} onSend={handleSend} />
         </div>
         {/* Below 900px the open panel covers the messages. A click on the backdrop closes it. */}

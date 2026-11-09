@@ -90,10 +90,11 @@ type MessageListProps = {
   displayName: string;
   historyEndId: number; // messages up to this id came with a join and do not slide in
   note: string | null; // "Loading messages..." or "No messages yet.", centred in the list
+  toast: ReactNode; // shown under "New messages" in one stack above the composer
   onRetry: (message: PendingMessage) => void;
 };
 
-export function MessageList({ messages, pending, displayName, historyEndId, note, onRetry }: MessageListProps) {
+export function MessageList({ messages, pending, displayName, historyEndId, note, toast, onRetry }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
   const newMessagesButtonRef = useRef<HTMLButtonElement>(null);
@@ -215,12 +216,16 @@ export function MessageList({ messages, pending, displayName, historyEndId, note
           {items}
         </ol>
       </div>
-      {hasNewBelow && (
-        <button ref={newMessagesButtonRef} type="button" className="new-messages" onClick={handleNewMessagesClick}>
-          <ArrowDown size={16} aria-hidden="true" />
-          New messages
-        </button>
-      )}
+      {/* One stack, so "New messages" and the toast never cover each other. */}
+      <div className="list-overlay">
+        {hasNewBelow && (
+          <button ref={newMessagesButtonRef} type="button" className="new-messages" onClick={handleNewMessagesClick}>
+            <ArrowDown size={16} aria-hidden="true" />
+            New messages
+          </button>
+        )}
+        {toast}
+      </div>
     </div>
   );
 }

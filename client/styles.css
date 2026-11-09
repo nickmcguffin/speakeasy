@@ -477,10 +477,24 @@ button.small {
   font-size: 0.875rem;
 }
 
-.new-messages {
+/* "New messages" and the toast, stacked above the composer with an 8px gap. */
+.list-overlay {
   position: absolute;
   bottom: 0.75rem;
   left: 50%;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateX(-50%);
+}
+
+/* The empty live region takes no space, so the gap shows only when a toast is there. */
+.toast-region:not(:empty) {
+  margin-top: 0.5rem;
+}
+
+.new-messages {
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
@@ -489,20 +503,12 @@ button.small {
   border-radius: 999px;
   box-shadow: 0 2px 10px rgb(0 0 0 / 0.2);
   font-size: 0.875rem;
-  transform: translateX(-50%);
+  white-space: nowrap;
 }
 
 /* Toast: a short message just above the composer, on every screen size. */
-.toast-anchor {
-  position: relative;
-  z-index: 3;
-  height: 0;
-}
-
 .toast {
-  position: absolute;
-  bottom: 0.75rem;
-  left: 50%;
+  margin: 0;
   padding: 0.5rem 1rem;
   border-radius: 999px;
   background: var(--text);
@@ -511,14 +517,13 @@ button.small {
   font-weight: 600;
   white-space: nowrap;
   box-shadow: 0 2px 10px rgb(0 0 0 / 0.2);
-  transform: translateX(-50%);
   animation: toast-in 150ms ease-out;
 }
 
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translate(-50%, 0.375rem);
+    transform: translateY(0.375rem);
   }
 }
 
