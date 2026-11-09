@@ -2,6 +2,16 @@ import { X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import type { Participant } from "../shared/types.js";
 
+// The first character of the first two words. Array.from splits by code point, so an emoji is
+// not cut in half.
+function initials(name: string) {
+  let result = "";
+  for (const word of name.trim().split(/\s+/).slice(0, 2)) {
+    result += Array.from(word)[0] ?? "";
+  }
+  return result.toLocaleUpperCase();
+}
+
 type ParticipantPanelProps = {
   id: string;
   participants: Participant[];
@@ -35,10 +45,10 @@ export function ParticipantPanel({ id, participants, presenceKey, open, onClose 
   return (
     <aside id={id} className={open ? "participants open" : "participants"} aria-label="People in this room">
       <div className="participants-header">
-        {/* Nothing until the first list arrives. */}
         <h2>
-          {participants.length > 0 &&
-            `${participants.length} ${participants.length === 1 ? "person" : "people"} here`}
+          Participants
+          {/* No count until the first list arrives. */}
+          {participants.length > 0 && <span className="muted"> {participants.length}</span>}
         </h2>
         <button
           ref={closeButtonRef}
@@ -51,12 +61,20 @@ export function ParticipantPanel({ id, participants, presenceKey, open, onClose 
         </button>
       </div>
       <ul>
-        {participants.map((participant) => (
-          <li key={participant.presenceKey}>
-            {participant.name}
-            {participant.presenceKey === presenceKey && <span className="muted"> (you)</span>}
-          </li>
-        ))}
+        {participants.map((participant) => {
+          const isYou = participant.presenceKey === presenceKey;
+          return (
+            <li key={participant.presenceKey}>
+              <span className={isYou ? "avatar you" : "avatar"} aria-hidden="true">
+                {initials(participant.name)}
+              </span>
+              <span className="participant-name">
+                {participant.name}
+                {isYou && <span className="muted"> (you)</span>}
+              </span>
+            </li>
+          );
+        })}
       </ul>
     </aside>
   );

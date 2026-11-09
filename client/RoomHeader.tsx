@@ -20,7 +20,7 @@ type RoomHeaderProps = {
   panelId: string;
   panelOpen: boolean;
   participantButtonRef: RefObject<HTMLButtonElement | null>;
-  onOpenPanel: () => void;
+  onTogglePanel: () => void;
   onLinkSaved: () => void;
   onLeave: () => void;
 };
@@ -32,7 +32,7 @@ export function RoomHeader({
   panelId,
   panelOpen,
   participantButtonRef,
-  onOpenPanel,
+  onTogglePanel,
   onLinkSaved,
   onLeave,
 }: RoomHeaderProps) {
@@ -92,7 +92,7 @@ export function RoomHeader({
             ref={participantButtonRef}
             type="button"
             className="secondary participants-button"
-            onClick={onOpenPanel}
+            onClick={onTogglePanel}
             aria-label={peopleLabel}
             aria-expanded={panelOpen}
             aria-controls={panelId}

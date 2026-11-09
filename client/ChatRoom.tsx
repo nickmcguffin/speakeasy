@@ -181,6 +181,14 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
     participantButtonRef.current?.focus();
   }, []);
 
+  const handleTogglePanel = () => {
+    if (panelOpen) {
+      closePanel();
+    } else {
+      setPanelOpen(true);
+    }
+  };
+
   const handleLinkSaved = () => {
     dispatch({ type: "linkSaved" });
     setToast({ id: Date.now(), text: "Link copied" });
@@ -209,7 +217,7 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
         panelId={panelId}
         panelOpen={panelOpen}
         participantButtonRef={participantButtonRef}
-        onOpenPanel={() => setPanelOpen(true)}
+        onTogglePanel={handleTogglePanel}
         onLinkSaved={handleLinkSaved}
         onLeave={handleLeave}
       />
@@ -226,6 +234,8 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
           <Toast message={toast} onDismiss={() => setToast(null)} />
           <Composer connection={state.connection} joinError={joinErrorText} onSend={handleSend} />
         </div>
+        {/* Below 900px the open panel covers the messages. A click on the backdrop closes it. */}
+        {panelOpen && <div className="panel-backdrop" onClick={closePanel} aria-hidden="true" />}
         <ParticipantPanel
           id={panelId}
           participants={state.participants}

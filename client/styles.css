@@ -575,9 +575,13 @@ button.small {
 
 .participants h2 {
   margin: 0;
-  color: var(--muted);
-  font-size: 0.875rem;
-  font-weight: 600;
+  font-size: 1rem;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.participants h2 .muted {
+  font-weight: 500;
 }
 
 .participants ul {
@@ -587,13 +591,42 @@ button.small {
 }
 
 .participants li {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
   padding: 0.375rem 0;
+}
+
+.participant-name {
+  min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* Initials avatar: bg with text colour for other people, accent for you. */
+.avatar {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.avatar.you {
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 @media (min-width: 900px) {
   .participants-button,
-  .panel-close {
+  .panel-close,
+  .panel-backdrop {
     display: none !important;
   }
 }
@@ -603,10 +636,17 @@ button.small {
     display: none;
   }
 
+  .panel-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    background: rgb(0 0 0 / 0.4);
+  }
+
   .participants.open {
     position: absolute;
     inset: 0 0 0 auto;
-    z-index: 2;
+    z-index: 3;
     display: block;
     width: min(18rem, 85%);
     box-shadow: -8px 0 24px rgb(0 0 0 / 0.2);
