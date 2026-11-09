@@ -296,7 +296,7 @@ type RoomState = {
 | Missing or invalid key in the link | "This link is incomplete" screen, with a hint to ask for the full link. No room lookup and no join |
 | No Web Crypto (not a secure context) | "This browser cannot encrypt messages" screen on every route, with no requests to the API or socket |
 | Message fails to decrypt | Shown as "Unable to decrypt this message", other messages still show |
-| Invalid input | Ack with `INVALID_INPUT`, message marked failed with retry |
+| Invalid input | Ack with `INVALID_INPUT`, message marked failed with the reason and no retry, because a retry fails again |
 | Message over 2,000 characters | Rejected in the client with an inline message. The draft is kept and nothing is sent |
 | Join fails (`ROOM_NOT_FOUND`, `SERVER_ERROR` or no ack in time) | "Room not found" or "Could not join the room. Reload the page to try again." |
 | Database error | Ack with `SERVER_ERROR`, message marked failed with retry |
@@ -346,8 +346,7 @@ type RoomState = {
 - **Long rooms:** "load older messages" with `before` pagination.
 - **Room settings:** expiry with a cleanup job (also limits exposure of a leaked link), participant limit, and a creator token to manage them.
 - **Room password:** derive the key from a password (PBKDF2) instead of putting it in the link, so a leaked link alone is not enough.
-- **Stronger encryption model:** key rotation, encrypted display names, and AES-GCM additional data that binds each ciphertext to its room and `clientId`.
-- **AES-GCM additional data so a name ciphertext cannot be used as a message:** today the name and the messages use the same key and format, so someone with the room ID could post the stored name ciphertext as a message, and it would decrypt.
+- **Stronger encryption model:** key rotation, encrypted display names, and AES-GCM additional data that binds each ciphertext to its room, its type (name or message) and its `clientId`. Today someone with the room ID could post the stored name ciphertext, or an old message, as a new message, and it would decrypt.
 - **Identity:** accounts, then moderation (remove a person, rotate the link).
 - **Typing indicators:** from Socket.IO room membership, sent like presence.
 - **Cold starts:** a paid instance removes the spin-down delay.
@@ -381,12 +380,15 @@ All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
 - Hierarchy from size and weight. Sentence case. No all-caps labels.
 
 ### Layout
-- Home: one narrow column, centred, with left-aligned text. App name, one line about what it does, an optional room name field, and "Create a room".
-- Room: header (room name, connection status, copy link), message list, composer bar fixed at the bottom.
-- Room name: optional field on the home page, labelled "Room name (optional)". The room heading and the tab title show it, or "Untitled room".
-- Participant list: a narrow side panel on desktop. On mobile, a "3 here" button in the header opens it.
-- Share panel at the top of the message list while the room has no messages. The share button should sit elsewhere after messages have been sent.
-- Your messages on the right in `accent`. Other people's messages on the left in `surface`. The name shows only on the first message in a group from the same person.
+- App header on every screen: 56px, `surface` with a `divider` bottom border. Left: the logo mark (the favicon's speech bubble with a keyhole) and "Speakeasy", a link to the home page. Right: content for the current screen.
+- Home: no header content on the right. One narrow column, centred, with left-aligned text: the heading "Private rooms for quick conversations", one line about encryption, the field "Room name (optional)", and "Create a room".
+- Room: the header holds the room name (or "Untitled room") with the connection status under it, then the participant button, "Copy link" and "Leave room", in that order. On mobile: the logo mark only, a shortened room name, and icon buttons with aria-labels. Below the header: the message list, then the composer bar fixed at the bottom.
+- Room name: the room heading and the tab title show it, or "Untitled room".
+- Participant list: on desktop (900px and wider), a narrow side panel that is always visible, so the header has no participant button. On mobile, the participant button ("3") opens the list as a panel over the messages.
+- Share panel: at the top of the message list while the room has no messages. It shows the full link in monospace with the part after # highlighted, the line "The part after # is the key. It never leaves your browser.", and "Copy link" (and "Share" where the Web Share API is available). After the first message, the panel goes away, and "Copy link" in the header is the way to share.
+- Messages: yours on the right in `accent`, other people's on the left in `surface`. The name shows only on the first message in a group from the same person.
+- "Leave room" (secondary button, last in the header) closes the connection and goes to the home page. The room and its messages stay. The browser Back button returns to the room, because the full link is in the history.
+- Leaving (the "Leave room" button or the logo link) asks for confirmation only when this tab created the room and the link was not copied or shared. The dialog offers "Copy link and leave", "Leave anyway" and "Stay". It uses the native dialog element; Escape means "Stay".
 
 ### Styles
 - One stylesheet, `client/styles.css`, with the colour tokens as CSS custom properties. Dark values apply under `prefers-color-scheme: dark`. No CSS framework.
@@ -395,13 +397,13 @@ All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
 - The favicon (`client/public/favicon.svg`) is a speech bubble with a keyhole in `accent`. A `prefers-color-scheme: dark` query inside the SVG switches it to the dark `focus` green (`#7CC9A1`), so it stays clear in a dark tab bar.
 
 ### Components
-- Message field: pill shape, `field-border`, 2px `focus` ring when focused.
+- Message field: pill shape, `field-border` edge, and the same focus style as other text fields (the border turns `focus`, no ring outside). It grows to about 5 lines, then scrolls.
 - Send button: round, `accent`, send icon, `aria-label="Send"`.
 - One state screen component (`StateScreen`: title, one or two sentences, optional action button) for: incomplete link, room not found, page not found, cannot encrypt, could not load (with Try again). The text says what happened and what to do.
 - Connection status: small dot with text. Colour is never the only signal.
 
 ### Message states
-- Sending: lower opacity and "Sending...".
+- Sending: a "Sending..." label in `muted` next to the time. The message text keeps full contrast (no lower opacity).
 - Failed: `danger` text with the reason. Retry for network and server errors. No Retry for `INVALID_INPUT`.
 - Wrong key: if the history has messages and none decrypt, a warning banner and sending is disabled.
 
