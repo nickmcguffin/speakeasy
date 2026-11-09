@@ -119,6 +119,13 @@ textarea:hover {
   border-color: var(--muted);
 }
 
+/* A disabled field (sending is off): the edge goes quiet, the placeholder keeps its contrast. */
+:is(input, textarea):disabled {
+  border-color: var(--divider);
+  background: var(--bg);
+  cursor: not-allowed;
+}
+
 :is(input, textarea)[aria-invalid="true"] {
   border-color: var(--danger);
 }
@@ -390,6 +397,17 @@ textarea:hover {
 /* Without messages the note takes all the free space, so it is centred. */
 .messages:empty {
   margin-top: 0;
+}
+
+/* Wrong-key banner, above the message list. */
+.banner {
+  margin: 0;
+  padding: 0.75rem max(1rem, env(safe-area-inset-right)) 0.75rem max(1rem, env(safe-area-inset-left));
+  border-bottom: 1px solid var(--divider);
+  background: var(--surface);
+  color: var(--danger);
+  font-weight: 600;
+  text-align: center;
 }
 
 /* Leave dialog: a native modal <dialog>. */

@@ -322,6 +322,21 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, lookupRetryin
     saveLink();
   };
 
+  // Wrong key: the room has messages and none of them decrypt. A later message that decrypts
+  // ends it.
+  let decrypted = 0;
+  let undecryptable = 0;
+  for (const record of state.messages) {
+    if (record.kind === "message") {
+      if (record.body === null) {
+        undecryptable += 1;
+      } else {
+        decrypted += 1;
+      }
+    }
+  }
+  const wrongKey = undecryptable > 0 && decrypted === 0;
+
   // The share panel shows from the join ack until the first message. Events do not count.
   const hasMessages = state.pending.length > 0 || state.messages.some((record) => record.kind === "message");
   const showSharePanel = state.historyLoaded && !hasMessages;
@@ -367,6 +382,11 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, lookupRetryin
       />
       <main className="room-body">
         <div className="conversation">
+          {wrongKey && (
+            <p className="banner" role="alert">
+              This link does not match this room. Ask for the full link.
+            </p>
+          )}
           <MessageList
             messages={state.messages}
             pending={state.pending}
@@ -383,7 +403,12 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, lookupRetryin
             onRetry={handleRetry}
             onTypeToComposer={(text) => composerRef.current?.focusAndType(text)}
           />
-          <Composer ref={composerRef} connection={connection} blockedReason={null} onSend={handleSend} />
+          <Composer
+            ref={composerRef}
+            connection={connection}
+            blockedReason={wrongKey ? "Sending is off, because this link does not match this room." : null}
+            onSend={handleSend}
+          />
         </div>
         {/* Below 900px the open panel covers the messages. A click on the backdrop closes it. */}
         {panelOpen && <div className="panel-backdrop" onClick={closePanel} aria-hidden="true" />}

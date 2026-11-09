@@ -115,6 +115,7 @@ export function Composer({ connection, blockedReason, onSend, ref }: ComposerPro
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={handleKeyDown}
             rows={1}
+            disabled={blockedReason !== null}
             placeholder="Message"
             aria-invalid={draftError !== null}
             aria-describedby={draftError ? errorId : undefined}
