@@ -146,9 +146,12 @@ export function RoomPage({ roomId, encodedKey }: RoomPageProps) {
     );
   }
   return (
-    <main>
-      <h1>{roomName}</h1>
-      <ChatRoom roomId={roomId} displayName={displayName} roomKey={room.roomKey} browserToken={browserToken} />
-    </main>
+    <ChatRoom
+      roomId={roomId}
+      roomName={roomName}
+      displayName={displayName}
+      roomKey={room.roomKey}
+      browserToken={browserToken}
+    />
   );
 }
