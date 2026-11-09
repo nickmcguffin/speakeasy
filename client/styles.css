@@ -420,14 +420,20 @@ textarea:hover {
 
 /* "Bob joined the room": small, centred and muted. Not a bubble, no time. */
 .event {
-  margin: 1rem 0;
+  margin: 0;
   color: var(--muted);
   font-size: 0.8125rem;
   text-align: center;
 }
 
-.event:first-child {
-  margin-top: 0;
+/* The normal gap between an event and a message, and 4px between two events in a row. A message
+   after an event starts a group, which has its own 1rem gap. */
+.messages > * + .event {
+  margin-top: 1rem;
+}
+
+.messages > .event + .event {
+  margin-top: 0.25rem;
 }
 
 .event.new {
