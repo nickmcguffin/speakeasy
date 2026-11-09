@@ -360,8 +360,11 @@ textarea:hover {
 }
 
 /* A column, so a short conversation can sit at the bottom (margin-top: auto on the list)
-   while a long one still scrolls from the top. */
+   while a long one still scrolls from the top. position: relative makes it the containing block
+   of the visually hidden "You" labels in the list, so they scroll and clip with it. Without it
+   their containing block is outside the scroller, and labels below the view make the page taller. */
 .message-scroll {
+  position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;
