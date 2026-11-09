@@ -381,7 +381,7 @@ All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
 - Hierarchy from size and weight. Sentence case. No all-caps labels.
 
 ### Layout
-- Home: one narrow, left-aligned column. App name, one line about what it does, an optional room name field, and "Create a room".
+- Home: one narrow column, centred, with left-aligned text. App name, one line about what it does, an optional room name field, and "Create a room".
 - Room: header (room name, connection status, copy link), message list, composer bar fixed at the bottom.
 - Room name: optional field on the home page, labelled "Room name (optional)". The room heading and the tab title show it, or "Untitled room".
 - Participant list: a narrow side panel on desktop. On mobile, a "3 here" button in the header opens it.
@@ -390,9 +390,9 @@ All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
 
 ### Styles
 - One stylesheet, `client/styles.css`, with the colour tokens as CSS custom properties. Dark values apply under `prefers-color-scheme: dark`. No CSS framework.
-- Base styles for the body, headings, buttons, text fields, focus and errors. Buttons are primary (`accent`) by default, and `secondary` buttons have a `field-border` outline. Text fields have a `field-border` edge, which turns `danger` while the field is invalid. Every control shows a 2px `focus` outline on `:focus-visible`. Inline errors use `danger`.
-- The home page, the name prompt and the state screens share one narrow, left-aligned column (`.page`).
-- The favicon (`client/public/favicon.svg`) is a speech bubble with a keyhole in `accent`.
+- Base styles for the body, headings, buttons, text fields, focus and errors. Buttons are primary (`accent`) by default, and `secondary` buttons have a `field-border` outline. Text fields have a `field-border` edge, which turns `danger` while the field is invalid. On `:focus-visible`, buttons and links show a 2px `focus` outline with a 2px offset. A text field shows focus on its own border instead: the border turns `focus` and an inset 1px shadow makes it look 2px thick, so the field keeps its size and there is no ring outside it. Inline errors use `danger`.
+- The home page, the name prompt and the state screens share one column (`.page`): about 28rem wide, centred horizontally, with left-aligned text. It starts at a fixed distance from the top (`min(18vh, 160px)`), not centred vertically, so the content does not move when an error message appears.
+- The favicon (`client/public/favicon.svg`) is a speech bubble with a keyhole in `accent`. A `prefers-color-scheme: dark` query inside the SVG switches it to the dark `focus` green (`#7CC9A1`), so it stays clear in a dark tab bar.
 
 ### Components
 - Message field: pill shape, `field-border`, 2px `focus` ring when focused.
