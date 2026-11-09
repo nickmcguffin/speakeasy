@@ -45,10 +45,19 @@ export function ParticipantPanel({ id, participants, presenceKey, open, onClose 
   return (
     <aside id={id} className={open ? "participants open" : "participants"} aria-label="People in this room">
       <div className="participants-header">
+        {/* No count until the first list arrives. Screen readers hear "Participants, 3 people". */}
         <h2>
           Participants
-          {/* No count until the first list arrives. */}
-          {participants.length > 0 && <span className="muted"> {participants.length}</span>}
+          {participants.length > 0 && (
+            <>
+              <span className="count-badge" aria-hidden="true">
+                {participants.length}
+              </span>
+              <span className="visually-hidden">
+                , {participants.length} {participants.length === 1 ? "person" : "people"}
+              </span>
+            </>
+          )}
         </h2>
         <button
           ref={closeButtonRef}
