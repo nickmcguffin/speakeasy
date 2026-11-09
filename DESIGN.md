@@ -389,6 +389,7 @@ All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
 - Messages: yours on the right in `accent`, other people's on the left in `surface`. The name shows only on the first message in a group from the same person.
 - "Leave room" (secondary button, last in the header) closes the connection and goes to the home page. The room and its messages stay. The browser Back button returns to the room, because the full link is in the history.
 - Leaving (the "Leave room" button or the logo link) asks for confirmation only when this tab created the room and the link was not copied or shared. The dialog offers "Copy link and leave", "Leave anyway" and "Stay". It uses the native dialog element; Escape means "Stay".
+- Theme toggle in the header on every screen, before "Leave room" in the room. The first visit follows the system setting. The button switches between light and dark and saves the choice in local storage (`speakeasy:theme`). An inline script in index.html applies it before the first paint, so the page never shows the wrong theme first.
 
 ### Styles
 - One stylesheet, `client/styles.css`, with the colour tokens as CSS custom properties. Dark values apply under `prefers-color-scheme: dark`. No CSS framework.
