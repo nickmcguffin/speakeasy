@@ -4,7 +4,7 @@ import type { Participant } from "../shared/types.js";
 
 // The first character of the first two words. Array.from splits by code point, so an emoji is
 // not cut in half.
-function initials(name: string) {
+export function initials(name: string) {
   let result = "";
   for (const word of name.trim().split(/\s+/).slice(0, 2)) {
     result += Array.from(word)[0] ?? "";

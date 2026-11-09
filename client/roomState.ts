@@ -53,6 +53,12 @@ export const initialRoomState: RoomState = {
   historyLoaded: false,
 };
 
+// Yours: the row's author key is this browser's. A row without an author key (from before
+// author keys) is never yours, whatever its name.
+export function isOwnRecord(record: ChatRecord, presenceKey: string | null) {
+  return record.authorKey !== null && record.authorKey === presenceKey;
+}
+
 // Merges by id, so a message or event that arrives twice (join backfill and broadcast) shows once.
 function mergeMessages(current: ChatRecord[], incoming: ChatRecord[]) {
   const byId = new Map<number, ChatRecord>();
