@@ -3,7 +3,7 @@ import { io, type Socket } from "socket.io-client";
 import type {
   ClientToServerEvents,
   RoomRecord,
-  ErrorCode,
+  JoinResult,
   ServerToClientEvents,
 } from "../shared/types.js";
 import { Composer, type ComposerHandle } from "./Composer";
@@ -11,7 +11,9 @@ import { decrypt, encrypt, type RoomKey } from "./crypto";
 import { MessageList } from "./MessageList";
 import { navigate } from "./navigation";
 import { ParticipantPanel } from "./ParticipantPanel";
+import { failuresBeforeErrorScreen, retryDelayMs } from "./retry";
 import { RoomHeader } from "./RoomHeader";
+import { StateScreen } from "./StateScreen";
 import { Toast, type ToastMessage } from "./Toast";
 import { type ChatRecord, initialRoomState, type PendingMessage, roomReducer } from "./roomState";
 
@@ -50,12 +52,18 @@ type ChatRoomProps = {
   roomName: string | null;
   displayName: string;
   roomKey: RoomKey | null;
+  lookupRetrying: boolean; // the room lookup failed and is being tried again
   browserToken: string;
 };
 
-export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken }: ChatRoomProps) {
+export function ChatRoom({ roomId, roomName, displayName, roomKey, lookupRetrying, browserToken }: ChatRoomProps) {
   const [state, dispatch] = useReducer(roomReducer, initialRoomState);
-  const [joinError, setJoinError] = useState<ErrorCode | null>(null);
+  // Failed joins in a row (network error, SERVER_ERROR or no ack in time). Reset by a join.
+  const [joinFailures, setJoinFailures] = useState(0);
+  // ROOM_NOT_FOUND from the join is final: the room is gone.
+  const [roomGone, setRoomGone] = useState(false);
+  // Set by the socket effect: Try again starts a join at once.
+  const retryJoinRef = useRef<() => void>(() => {});
   // Messages up to this id arrived with a join (history or catch-up), so they do not slide in.
   const [historyEndId, setHistoryEndId] = useState(0);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -86,32 +94,62 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
     const socket: ChatSocket = io({ closeOnBeforeunload: true });
     socketRef.current = socket;
 
-    // Runs on the first connect and on every reconnect, because a new server socket is in no room.
-    // "Connected" waits for the join ack, so nothing is sent before the server knows the room.
-    const handleConnect = async () => {
+    let failures = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+    // A failed join is tried again after 1, 2 and 4 seconds, then every 10 seconds, and at once
+    // on every connect. Meanwhile the room shows "Reconnecting".
+    const joinFailed = () => {
+      failures += 1;
+      setJoinFailures(failures);
+      dispatch({ type: "connection", connection: "reconnecting" });
+      retryTimer = setTimeout(join, retryDelayMs(failures));
+    };
+
+    // Runs on the first connect, on every reconnect (a new server socket is in no room) and on a
+    // retry. "Connected" waits for the join ack, so nothing is sent before the server knows the
+    // room. Without a connection it waits for the next connect.
+    const join = async () => {
+      clearTimeout(retryTimer);
+      if (!socket.connected) {
+        return;
+      }
+      let result: JoinResult;
       try {
-        const result = await socket.timeout(ackTimeoutMs).emitWithAck("room:join", {
+        result = await socket.timeout(ackTimeoutMs).emitWithAck("room:join", {
           roomId,
           displayName,
           browserToken,
           since: lastMessageIdRef.current,
         });
-        if (!result.ok) {
-          setJoinError(result.error);
-          return;
-        }
-        setJoinError(null);
-        const messages = await decryptRecords(roomKey, result.messages);
-        let lastId = 0;
-        for (const message of messages) {
-          lastId = Math.max(lastId, message.id);
-        }
-        setHistoryEndId((current) => Math.max(current, lastId));
-        dispatch({ type: "received", messages });
-        dispatch({ type: "joined", presenceKey: result.presenceKey });
       } catch {
-        setJoinError("SERVER_ERROR");
+        joinFailed();
+        return;
       }
+      if (!result.ok) {
+        if (result.error === "ROOM_NOT_FOUND") {
+          setRoomGone(true);
+        } else {
+          joinFailed();
+        }
+        return;
+      }
+      failures = 0;
+      setJoinFailures(0);
+      const messages = await decryptRecords(roomKey, result.messages);
+      let lastId = 0;
+      for (const message of messages) {
+        lastId = Math.max(lastId, message.id);
+      }
+      setHistoryEndId((current) => Math.max(current, lastId));
+      dispatch({ type: "received", messages });
+      dispatch({ type: "joined", presenceKey: result.presenceKey });
+    };
+
+    retryJoinRef.current = () => {
+      failures = 0;
+      setJoinFailures(0);
+      join();
     };
 
     // socket.active is true while Socket.IO keeps retrying, false once it has given up.
@@ -123,7 +161,7 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
       dispatch({ type: "received", messages: [await decryptRecord(roomKey, record)] });
     };
 
-    socket.on("connect", handleConnect);
+    socket.on("connect", join);
     socket.on("disconnect", handleConnectionLost);
     socket.on("connect_error", handleConnectionLost);
     socket.on("message:new", handleNewMessage);
@@ -131,6 +169,7 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
     socket.on("room:presence", (participants) => dispatch({ type: "presence", participants }));
 
     return () => {
+      clearTimeout(retryTimer);
       socket.disconnect();
     };
   }, [roomId, displayName, roomKey, browserToken]);
@@ -207,18 +246,33 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
     listNote = "No messages yet.";
   }
 
-  let joinErrorText: string | null = null;
-  if (joinError === "ROOM_NOT_FOUND") {
-    joinErrorText = "Room not found";
-  } else if (joinError) {
-    joinErrorText = "Could not join the room. Reload the page to try again.";
+  // The hooks above stay mounted behind these screens, so the retries go on.
+  if (roomGone) {
+    return (
+      <StateScreen
+        title="Room not found"
+        message="No room matches this link. Check that you have the whole link, or ask the person who shared it to send it again."
+      />
+    );
   }
+  if (joinFailures >= failuresBeforeErrorScreen && state.connection !== "connected") {
+    return (
+      <StateScreen
+        title="Could not load the room"
+        message="The server did not answer. Check your connection and try again."
+        action={{ label: "Try again", onClick: () => retryJoinRef.current() }}
+      />
+    );
+  }
+
+  // While the room lookup is tried again, the layout already shows "Reconnecting".
+  const connection = !roomKey && lookupRetrying ? "reconnecting" : state.connection;
 
   return (
     <div className="room">
       <RoomHeader
         roomName={roomName}
-        connection={state.connection}
+        connection={connection}
         participantCount={state.participants.length}
         panelId={panelId}
         panelOpen={panelOpen}
@@ -240,7 +294,7 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
             onRetry={handleRetry}
             onTypeToComposer={(text) => composerRef.current?.focusAndType(text)}
           />
-          <Composer ref={composerRef} connection={state.connection} joinError={joinErrorText} onSend={handleSend} />
+          <Composer ref={composerRef} connection={connection} blockedReason={null} onSend={handleSend} />
         </div>
         {/* Below 900px the open panel covers the messages. A click on the backdrop closes it. */}
         {panelOpen && <div className="panel-backdrop" onClick={closePanel} aria-hidden="true" />}

@@ -5,6 +5,7 @@ import { ChatRoom } from "./ChatRoom";
 import { decrypt, importKey, type RoomKey } from "./crypto";
 import { getBrowserToken } from "./browserToken";
 import { NamePrompt, readStoredName } from "./NamePrompt";
+import { failuresBeforeErrorScreen, retryDelayMs } from "./retry";
 import { StateScreen } from "./StateScreen";
 
 type RoomStatus = "loading" | "incomplete-link" | "found" | "not-found" | "failed";
@@ -63,22 +64,40 @@ type RoomPageProps = { roomId: string; encodedKey: string };
 export function RoomPage({ roomId, encodedKey }: RoomPageProps) {
   // The key lives only in this state and in the URL. It is never stored or sent.
   const [room, setRoom] = useState(loadingRoom);
-  // Try again increases this, which runs the room lookup again.
+  // Each change runs the room lookup again: a retry, or Try again.
   const [attempt, setAttempt] = useState(0);
+  // Failed lookups in a row (network error or server error). Reset by a lookup that answers.
+  const [lookupFailures, setLookupFailures] = useState(0);
   const [displayName, setDisplayName] = useState(readStoredName);
   const [browserToken] = useState(getBrowserToken);
 
   useEffect(() => {
     let isCurrent = true;
     loadRoom(roomId, encodedKey).then((result) => {
-      if (isCurrent) {
-        setRoom(result);
+      if (!isCurrent) {
+        return;
       }
+      if (result.status === "failed") {
+        setLookupFailures((count) => count + 1);
+        return;
+      }
+      setLookupFailures(0);
+      setRoom(result);
     });
     return () => {
       isCurrent = false;
     };
   }, [roomId, encodedKey, attempt]);
+
+  // A failed lookup is tried again after 1, 2 and 4 seconds, then every 10 seconds, also while
+  // the "Could not load the room" screen shows.
+  useEffect(() => {
+    if (lookupFailures === 0) {
+      return;
+    }
+    const timer = setTimeout(() => setAttempt((count) => count + 1), retryDelayMs(lookupFailures));
+    return () => clearTimeout(timer);
+  }, [lookupFailures]);
 
   // The tab title shows the room name, and goes back to the app name when the room closes.
   useEffect(() => {
@@ -91,8 +110,9 @@ export function RoomPage({ roomId, encodedKey }: RoomPageProps) {
     };
   }, [room]);
 
+  // Starts over: the room layout with "Connecting", and the lookup at once.
   const handleTryAgain = () => {
-    setRoom(loadingRoom);
+    setLookupFailures(0);
     setAttempt((count) => count + 1);
   };
 
@@ -112,7 +132,7 @@ export function RoomPage({ roomId, encodedKey }: RoomPageProps) {
       />
     );
   }
-  if (room.status === "failed") {
+  if (room.status !== "found" && lookupFailures >= failuresBeforeErrorScreen) {
     return (
       <StateScreen
         title="Could not load the room"
@@ -142,6 +162,7 @@ export function RoomPage({ roomId, encodedKey }: RoomPageProps) {
       roomName={roomName}
       displayName={displayName}
       roomKey={found ? room.roomKey : null}
+      lookupRetrying={lookupFailures > 0}
       browserToken={browserToken}
     />
   );
