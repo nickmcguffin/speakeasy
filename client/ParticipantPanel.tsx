@@ -45,19 +45,21 @@ export function ParticipantPanel({ id, participants, presenceKey, open, onClose 
   return (
     <aside id={id} className={open ? "participants open" : "participants"} aria-label="People in this room">
       <div className="participants-header">
-        {/* No count until the first list arrives. Screen readers hear "Participants, 3 people". */}
+        {/* The visible word and badge are hidden from screen readers, which hear one text instead:
+            "Participants, 3 people". Separate pieces in a flex heading would be read with a space
+            before the comma. No count until the first list arrives. */}
         <h2>
-          Participants
+          <span aria-hidden="true">Participants</span>
           {participants.length > 0 && (
-            <>
-              <span className="count-badge" aria-hidden="true">
-                {participants.length}
-              </span>
-              <span className="visually-hidden">
-                , {participants.length} {participants.length === 1 ? "person" : "people"}
-              </span>
-            </>
+            <span className="count-badge" aria-hidden="true">
+              {participants.length}
+            </span>
           )}
+          <span className="visually-hidden">
+            Participants
+            {participants.length > 0 &&
+              `, ${participants.length} ${participants.length === 1 ? "person" : "people"}`}
+          </span>
         </h2>
         <button
           ref={closeButtonRef}
