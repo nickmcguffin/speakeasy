@@ -289,9 +289,10 @@ export function MessageList({
       >
         {top}
         {note && <p className="empty-note">{note}</p>}
-        <ol className="messages" role="log" aria-label="Messages">
-          {items}
-        </ol>
+        {/* The log role is on a wrapper, so the list inside keeps its list semantics. */}
+        <div className="message-log" role="log" aria-label="Messages">
+          <ol className="messages">{items}</ol>
+        </div>
       </div>
       {/* One stack, so "New messages" and the toast never cover each other. */}
       <div className="list-overlay">
