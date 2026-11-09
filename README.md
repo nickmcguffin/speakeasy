@@ -50,6 +50,7 @@ Due to my current role and having to cover someone on leave for the next week, I
 - Fast paths: one click to create a room, one field to join, Enter to send.
 - Every main action can be completed in three clicks or fewer.
 - Messages appear immediately with a "sending" state, so the app feels fast.
+- The leave dialog shows only when leaving is hard to reverse: in the tab that created the room, before its link was copied or shared. Everyone else leaves with one click.
 
 ## Key decisions and tradeoffs
 - **Secret links instead of accounts.** Much less to build and a faster join. The tradeoff: anyone with the full link can join and read, and there is no way to remove a person.

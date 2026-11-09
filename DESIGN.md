@@ -321,7 +321,9 @@ type RoomState = {
 - `RoomPage` gets the browser token from local storage (`speakeasy:browserToken`), or makes and stores one, and passes it to the chat component. Storage access is wrapped in try/catch, with an in-memory token as the fallback.
 - Local storage holds only the display name, the browser token and the theme choice (`speakeasy:theme`, only "light" or "dark", absent until the user uses the toggle). Session storage is not used.
 - `ChatRoom` owns the socket and the reducer, and renders `RoomHeader`, `MessageList`, `Composer` and `ParticipantPanel`. A pending message keeps its `queuedAt` time until the server's time arrives, and its `failure` decides the text and whether Retry shows.
-- `linkSaved` becomes true after a successful copy of the link, for the leave confirmation (not built yet).
+- `linkSaved` becomes true after a successful copy (header, share panel or leave dialog) or share of the link.
+- **History entry state.** The tab's history entry for the room holds `{ createdHere, linkSaved }`. Creating a room pushes the room entry with `createdHere: true`, and a copy or share replaces it with `linkSaved: true`. It is not storage: it survives a refresh in the same tab and never reaches other tabs. A joiner's entry has neither, so a joiner never sees the leave dialog.
+- **Retries.** A room lookup or `room:join` that fails with a network error, `SERVER_ERROR` or no ack in time is tried again after 1, 2 and 4 seconds, then every 10 seconds (`client/retry.ts`). A join is also tried again at once on every socket connect. `ROOM_NOT_FOUND` is final.
 - `historyLoaded` becomes true with the first join ack. Until then the list shows no "No messages yet.".
 - Until the room lookup has found the room, `ChatRoom` gets `roomName` and `roomKey` as null: it shows the room layout and does not connect.
 - Your own messages and events are the ones whose `authorKey` equals your `presenceKey`. A row with no `authorKey` (from before author keys) is never yours. Two tabs of one browser share the key, so both show its messages as yours.
@@ -333,7 +335,7 @@ type RoomState = {
 | Failure | Behaviour |
 |---|---|
 | Unknown room | 404 on the room check, "room not found" screen |
-| Room check fails (server error or no connection) | "Could not load the room" screen. Try again repeats the room lookup |
+| Room check fails (server error or no connection) | The room layout stays with "Reconnecting" while the lookup is tried again after 1, 2 and 4 seconds, then every 10 seconds. After 3 failures in a row, the "Could not load the room" screen with Try again, and the retries go on behind it. When one succeeds, the room shows. Try again starts over at once |
 | Unknown path | "Page not found" screen. The server also answers with status 404 |
 | Missing or invalid key in the link | "This link is incomplete" screen, with a hint to ask for the full link. No room lookup and no join |
 | No Web Crypto (not a secure context) | "This browser cannot encrypt messages" screen on every route, with no requests to the API or socket |
@@ -341,7 +343,10 @@ type RoomState = {
 | Invalid input | Ack with `INVALID_INPUT`, message marked failed with the reason and no retry, because a retry fails again |
 | Copy link fails (Clipboard API missing or refused) | A small panel under the header shows the full link in a focused, selected field to copy by hand. Escape or Close hides it |
 | Message over 2,000 characters | Rejected in the client with an inline message. The draft is kept and nothing is sent |
-| Join fails (`ROOM_NOT_FOUND`, `SERVER_ERROR` or no ack in time) | "Room not found" or "Could not join the room. Reload the page to try again." |
+| Join fails with `SERVER_ERROR`, no ack in time or a network error | Status "Reconnecting", and the join is tried again on the same timing and at once on every socket connect. After 3 failures in a row, the "Could not load the room" screen with Try again, with the retries going on behind it |
+| Join fails with `ROOM_NOT_FOUND` | "Room not found" screen. Final, no retry |
+| Server restart, also a full `npm run dev` restart | The room recovers by itself: the socket reconnects and joins, and a page that reloads (Vite does that after its own restart) retries the lookup until the server answers |
+| Copy link fails | See "Copy link fails" above. In the leave dialog, "Copy link and leave" then shows the fallback panel and does not leave |
 | Database error | Ack with `SERVER_ERROR`, message marked failed with retry |
 | Ack timeout | Message marked failed with retry (same `clientId`) |
 | Packet over 32 KB | Socket.IO closes the connection. The client reconnects and the message fails after its ack timeout |
@@ -433,12 +438,12 @@ All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
 - Room name: the room heading and the tab title show it, or "Untitled room".
 - Participant list: on desktop (900px and wider), a narrow side panel that is always visible, so the header has no participant button. On mobile, the participant button ("3") opens the list as a panel over the messages, with a backdrop.
 - Each participant has an initials avatar (accent for your own entry, `chip` for others) and the panel has a "Participants" heading with the count.
-- Share panel: at the top of the message list while the room has no messages. It shows the full link in monospace with the part after # highlighted, the line "The part after # is the key. It never leaves your browser.", and "Copy link" (and "Share" where the Web Share API is available). After the first message, the panel goes away, and "Copy link" in the header is the way to share.
+- Share panel: at the top of the message list from the join ack while the room has no messages of kind `'message'` (events do not count, and a pending message of your own does). It shows the full link in monospace, wrapping anywhere, with the part after # in `text` on a `chip` fill (14.1:1 in light, 8.8:1 in dark), the line "The part after # is the key. It never leaves your browser." (so colour is not the only signal), "Copy link" (the same copy, tick and toast as the header button) and "Share" only where `navigator.share` exists. A completed share sets `linkSaved`; an `AbortError` (the user closed the share sheet) does not. After the first message, the panel goes away, and "Copy link" in the header is the way to share. It replaces "No messages yet.".
 - Messages: yours on the right in `accent`, other people's on the left in `surface` (with a `divider` edge in dark mode only). The name shows on the first message of each group of other people's messages, and the time once, on the last message of a group (see "Message groups").
 - Short conversations sit at the bottom of the list, next to the composer. The list has `margin-top: auto` inside the scrolling column, so a long list still scrolls normally.
 - "Leave room" (secondary button, last in the header) closes the connection and goes to the home page. The room and its messages stay. The browser Back button returns to the room, because the full link is in the history.
-- Leaving (the "Leave room" button or the logo link) asks for confirmation only when this tab created the room and the link was not copied or shared. The dialog offers "Copy link and leave", "Leave anyway" and "Stay". It uses the native dialog element; Escape means "Stay".
-- Theme toggle in the header on every screen, before "Leave room" in the room. The first visit follows the system setting. The button switches between light and dark and saves the choice in local storage (`speakeasy:theme`). An inline script in index.html applies it before the first paint, so the page never shows the wrong theme first.
+- Leaving (the "Leave room" button or the logo link) asks for confirmation only when this tab created the room and the link was not copied or shared (`createdHere` and `linkSaved` from the history entry, see section 6). The native `<dialog>`, opened with `showModal()`: title "Save the link before you leave?", text "You have not copied the link for this room. Without it, you cannot come back, and nobody can recover it.", and "Copy link and leave" (primary), "Leave anyway" and "Stay". Focus starts on "Copy link and leave" and stays in the dialog; Escape means "Stay", and Stay returns focus to the button or link that opened it. If the copy fails, the fallback panel shows and the user stays. The browser Back button and closing the tab are not intercepted.
+- Theme toggle in the header on every screen, before "Leave room" in the room. The first visit follows the system setting. The button switches between light and dark and saves the choice in local storage (`speakeasy:theme`). Other open tabs apply the change at once, from the `storage` event. An inline script in index.html applies it before the first paint, so the page never shows the wrong theme first.
 
 ### Styles
 - One stylesheet, `client/styles.css`, with the colour tokens as CSS custom properties. Each token is a `light-dark()` pair, and `color-scheme` on `:root` picks the side: `light dark` follows the system setting, and `data-theme="light"` or `"dark"` on `<html>` (set by the toggle and by the script in index.html) fixes it. No CSS framework.
@@ -458,7 +463,7 @@ All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
 - Participant panel: a "Participants" heading (h2) with the count as a small pill badge 8px after it (`chip` fill, `text` colour, 12px, vertically centred). The visible word and the badge are hidden from screen readers, and one visually hidden text makes the heading read "Participants, 1 person" or "Participants, 3 people" (separate pieces in the flex heading would be read with a space before the comma). On mobile it is the panel title, next to the close button. Each entry has an initials avatar (`aria-hidden`): a circle with the first character of the first two words of the name (by code point, so an emoji stays whole). Other people: `chip` fill with `text` initials. You: `accent` fill with `on-accent` initials.
 - Participant panel below 900px: the participant button is a toggle (`aria-expanded`) that opens and closes it. It opens over the messages with a semi-transparent backdrop and focus on its close button. Escape, the close button, the participant button or a click on the backdrop closes it, and focus returns to the participant button.
 - Composer: the message field and the round send button. When not connected, the send button is disabled and a `muted` line above the field says why ("Connecting...", "Reconnecting..." or "Disconnected. Reload the page to reconnect."). The 2,000-character error shows above the field in `danger`.
-- Empty room: "No messages yet." in `muted`, centred in the list, only after the join ack (the share panel replaces it later).
+- Empty room: the share panel, from the join ack.
 
 ### Room loading
 - A room link shows the room layout at once: the app header with an empty room name, an empty list, and the composer with "Connecting..." and Send disabled. There is no separate loading screen.
@@ -481,13 +486,13 @@ All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
 
 ### Scrolling
 - The list opens at the bottom. A new message keeps it at the bottom when it was already there (within 48px).
-- When the user has scrolled up, new messages do not move the list. A "New messages" button appears and scrolls to the bottom.
+- When the user has scrolled up, new messages do not move the list. A "New messages" button appears and scrolls to the bottom. Only a new message of kind `'message'` from someone else shows it: not events, and not your own.
 - Your own new message always scrolls to the bottom.
 - The room fits exactly in `100dvh` and only the message list scrolls. The list's scroll container is `position: relative`, so the visually hidden "You" labels inside it scroll and clip with it. Without that, labels below the view made the whole page taller.
 - The list's scroll container is focusable (`tabIndex 0`, a region named "Conversation"), so the keyboard can scroll it, and its focus ring is an inset outline. When it has focus, Enter moves focus to the composer, and a printable key moves focus to the composer and adds that character to the end of the draft. Space, the arrow keys, Page Up, Page Down, Home, End, Tab and shortcuts with Ctrl, Meta or Alt keep their normal behaviour. A click in the list still focuses it, so text can be selected and copied.
-- Wrong key: if the history has messages and none decrypt, a warning banner and sending is disabled.
-- Join and leave events: small, centred `muted` text, "Bob joined the room" or "Bob left the room", and "You joined the room" or "You left the room" for your own browser. Not bubbles, no time. An event ends a message group. New events slide in like new messages; events from the history do not.
-- "No messages yet." shows while the room has no messages, even when it has events.
+- Wrong key: when the room has at least one message of kind `'message'` and none of them decrypt, a banner above the list says "This link does not match this room. Ask for the full link." (`danger` on `surface`, `role="alert"`), and the composer is disabled with the reason "Sending is off, because this link does not match this room." A later message that decrypts removes the banner and turns sending back on.
+- Join and leave events: small, centred `muted` text, "Bob joined the room" or "Bob left the room", and "You joined the room" or "You left the room" for your own browser. Not bubbles, no time. An event ends a message group. New events slide in like new messages; events from the history do not. Two events in a row are 4px apart; between an event and a message the normal 1rem gap stays.
+- The share panel shows while the room has no messages, even when it has events.
 
 ### Motion
 One moment only: a short slide-in (180 ms) for new messages. History and catch-up messages from a join do not slide in. Controls also change colour with a 150 ms transition on hover. No motion at all when the user prefers reduced motion.
