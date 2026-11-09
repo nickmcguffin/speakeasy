@@ -418,6 +418,22 @@ textarea:hover {
   align-items: flex-end;
 }
 
+/* "Bob joined the room": small, centred and muted. Not a bubble, no time. */
+.event {
+  margin: 1rem 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+
+.event:first-child {
+  margin-top: 0;
+}
+
+.event.new {
+  animation: slide-in 180ms ease-out;
+}
+
 .message.new {
   animation: slide-in 180ms ease-out;
 }

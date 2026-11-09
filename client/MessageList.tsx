@@ -1,6 +1,6 @@
 import { ArrowDown } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { ChatMessage, PendingMessage, SendFailure } from "./roomState";
+import type { ChatRecord, PendingMessage, SendFailure } from "./roomState";
 
 const failureText: Record<SendFailure, string> = {
   network: "Failed to send. Check your connection.",
@@ -27,15 +27,22 @@ type MessageItemProps = {
 };
 
 // One message before grouping: confirmed messages first, then pending ones.
-type Entry = Omit<MessageItemProps, "groupStart" | "groupEnd"> & { key: string };
+// authorId tells authors apart: the author key, or the name for rows from before author keys.
+type MessageEntry = Omit<MessageItemProps, "groupStart" | "groupEnd"> & { kind: "message"; key: string; authorId: string };
+// "Bob joined the room": small, centred, no time.
+type EventEntry = { kind: "event"; key: string; text: string; isNew: boolean };
+type Entry = MessageEntry | EventEntry;
 
-// A new group starts when the author changes or after a long pause. After step 7e, an event
-// between two messages will also start one.
-function startsGroup(previous: Entry | undefined, entry: Entry) {
-  if (!previous || previous.author !== entry.author) {
+// A new group starts when the author changes, after a long pause, or after a join or leave event.
+function startsGroup(previous: Entry | undefined, entry: MessageEntry) {
+  if (!previous || previous.kind === "event" || previous.authorId !== entry.authorId) {
     return true;
   }
   return Date.parse(entry.time) - Date.parse(previous.time) > groupGapMs;
+}
+
+function EventItem({ text, isNew }: { text: string; isNew: boolean }) {
+  return <li className={isNew ? "event new" : "event"}>{text}</li>;
 }
 
 function formatTime(iso: string) {
@@ -85,9 +92,10 @@ function MessageItem({ author, mine, groupStart, groupEnd, isNew, body, time, se
 }
 
 type MessageListProps = {
-  messages: ChatMessage[];
+  messages: ChatRecord[];
   pending: PendingMessage[];
   displayName: string;
+  presenceKey: string | null; // this browser's author key: its messages and events are "yours"
   historyEndId: number; // messages up to this id came with a join and do not slide in
   note: string | null; // "Loading messages..." or "No messages yet.", centred in the list
   toast: ReactNode; // shown under "New messages" in one stack above the composer
@@ -99,6 +107,7 @@ export function MessageList({
   messages,
   pending,
   displayName,
+  presenceKey,
   historyEndId,
   note,
   toast,
@@ -192,21 +201,38 @@ export function MessageList({
     }
   };
 
+  // Yours: the row's author key is this browser's. A row without an author key (from before
+  // author keys) is never yours, whatever its name.
   const entries: Entry[] = [];
-  for (const message of messages) {
+  for (const record of messages) {
+    const mine = record.authorKey !== null && record.authorKey === presenceKey;
+    if (record.kind !== "message") {
+      const who = mine ? "You" : record.authorName;
+      entries.push({
+        kind: "event",
+        key: `event-${record.id}`,
+        text: `${who} ${record.kind === "join" ? "joined" : "left"} the room`,
+        isNew: record.id > historyEndId,
+      });
+      continue;
+    }
     entries.push({
-      key: message.clientId,
-      author: message.authorName,
-      mine: message.authorName === displayName,
-      isNew: message.id > historyEndId,
-      body: message.body,
-      time: message.createdAt,
+      kind: "message",
+      key: record.clientId,
+      authorId: record.authorKey ?? `name:${record.authorName}`,
+      author: record.authorName,
+      mine,
+      isNew: record.id > historyEndId,
+      body: record.body,
+      time: record.createdAt,
       sending: false,
     });
   }
   for (const message of pending) {
     entries.push({
+      kind: "message",
       key: message.clientId,
+      authorId: presenceKey ?? "you",
       author: displayName,
       mine: true,
       isNew: true,
@@ -222,14 +248,19 @@ export function MessageList({
   // does not slide in twice.
   const items: ReactNode[] = [];
   for (let index = 0; index < entries.length; index++) {
-    const { key, ...entry } = entries[index];
+    const current = entries[index];
+    if (current.kind === "event") {
+      items.push(<EventItem key={current.key} text={current.text} isNew={current.isNew} />);
+      continue;
+    }
+    const { key, kind: _kind, authorId: _authorId, ...entry } = current;
     const next = entries[index + 1];
     items.push(
       <MessageItem
         key={key}
         {...entry}
-        groupStart={startsGroup(entries[index - 1], entries[index])}
-        groupEnd={!next || startsGroup(entries[index], next)}
+        groupStart={startsGroup(entries[index - 1], current)}
+        groupEnd={!next || next.kind === "event" || startsGroup(current, next)}
       />,
     );
   }

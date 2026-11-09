@@ -1,13 +1,25 @@
-// What the server stores and sends. It never contains plain text.
-export type EncryptedMessage = {
-  id: number; // server ID, used for ordering and the `since` cursor
-  clientId: string;
+// Every row the server stores and sends: a message or a join or leave event. Message text is
+// never plain text. Events have no encrypted fields.
+type RecordBase = {
+  id: number; // server ID, used for ordering and the `since` cursor (any kind)
   roomId: string;
   authorName: string; // plain text (see Known limits in README)
-  ciphertext: string; // base64url
-  iv: string; // base64url, 12 bytes
+  authorKey: string | null; // the author's presenceKey. null for rows from before step 7e
   createdAt: string; // ISO 8601
 };
+
+export type EncryptedMessage = RecordBase & {
+  kind: "message";
+  clientId: string;
+  ciphertext: string; // base64url
+  iv: string; // base64url, 12 bytes
+};
+
+// "Bob joined the room" or "Bob left the room", stored when a browser's first connection joins
+// and after its last connection has been gone for 5 seconds.
+export type RoomEvent = RecordBase & { kind: "join" | "leave" };
+
+export type RoomRecord = EncryptedMessage | RoomEvent;
 
 export type ErrorCode = "ROOM_NOT_FOUND" | "NOT_FOUND" | "INVALID_INPUT" | "NOT_JOINED" | "SERVER_ERROR";
 
@@ -42,7 +54,7 @@ export type SendPayload = { clientId: string; ciphertext: string; iv: string };
 export type Participant = { presenceKey: string; name: string };
 
 export type JoinResult =
-  | { ok: true; presenceKey: string; messages: EncryptedMessage[] }
+  | { ok: true; presenceKey: string; messages: RoomRecord[] }
   | { ok: false; error: ErrorCode };
 export type SendResult = { ok: true; message: EncryptedMessage } | { ok: false; error: ErrorCode };
 
@@ -52,11 +64,18 @@ export type ClientToServerEvents = {
 };
 
 export type ServerToClientEvents = {
-  "message:new": (message: EncryptedMessage) => void;
+  "message:new": (record: RoomRecord) => void;
   // The full list of joined participants, in join order. Sent to the whole room after every
   // join and leave, and replaces the client's list.
   "room:presence": (participants: Participant[]) => void;
 };
 
 // Stored on socket.data after a successful room:join. joinOrder sorts the presence list.
-export type SocketData = { roomId: string; displayName: string; browserToken: string; joinOrder: number };
+// presenceKey is stored on every message and event of this browser as its author key.
+export type SocketData = {
+  roomId: string;
+  displayName: string;
+  browserToken: string;
+  presenceKey: string;
+  joinOrder: number;
+};

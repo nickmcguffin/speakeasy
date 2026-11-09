@@ -1,4 +1,4 @@
-import type { EncryptedMessage, Participant } from "../shared/types.js";
+import type { EncryptedMessage, Participant, RoomEvent } from "../shared/types.js";
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected";
 export type MessageStatus = "sending" | "sent" | "failed";
@@ -8,6 +8,9 @@ export type SendFailure = "network" | "server" | "invalid";
 export type ChatMessage = Omit<EncryptedMessage, "ciphertext" | "iv"> & {
   body: string | null; // null when decryption fails
 };
+
+// A decrypted message, or a join or leave event (which has nothing to decrypt).
+export type ChatRecord = ChatMessage | RoomEvent;
 
 export type PendingMessage = {
   clientId: string;
@@ -21,7 +24,7 @@ export type PendingMessage = {
 
 export type RoomState = {
   connection: ConnectionState;
-  messages: ChatMessage[]; // confirmed and decrypted, ordered by id
+  messages: ChatRecord[]; // confirmed messages (decrypted) and events, ordered by id
   pending: PendingMessage[]; // in send order
   participants: Participant[]; // the last room:presence list, kept while disconnected
   presenceKey: string | null; // this browser's entry, from the latest join ack
@@ -33,7 +36,7 @@ export type RoomAction =
   | { type: "connection"; connection: ConnectionState }
   | { type: "joined"; presenceKey: string }
   | { type: "presence"; participants: Participant[] }
-  | { type: "received"; messages: ChatMessage[] }
+  | { type: "received"; messages: ChatRecord[] }
   | { type: "queued"; clientId: string; body: string; queuedAt: string }
   | { type: "encrypted"; clientId: string; ciphertext: string; iv: string }
   | { type: "sending"; clientId: string }
@@ -50,9 +53,9 @@ export const initialRoomState: RoomState = {
   historyLoaded: false,
 };
 
-// Merges by id, so a message that arrives twice (join backfill and broadcast) shows once.
-function mergeMessages(current: ChatMessage[], incoming: ChatMessage[]) {
-  const byId = new Map<number, ChatMessage>();
+// Merges by id, so a message or event that arrives twice (join backfill and broadcast) shows once.
+function mergeMessages(current: ChatRecord[], incoming: ChatRecord[]) {
+  const byId = new Map<number, ChatRecord>();
   for (const message of current) {
     byId.set(message.id, message);
   }
@@ -88,7 +91,9 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
       // the send ack and a backfill after a lost ack.
       const confirmedClientIds = new Set<string>();
       for (const message of action.messages) {
-        confirmedClientIds.add(message.clientId);
+        if (message.kind === "message") {
+          confirmedClientIds.add(message.clientId);
+        }
       }
       const pending: PendingMessage[] = [];
       for (const message of state.pending) {

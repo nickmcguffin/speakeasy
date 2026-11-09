@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useReducer, useRef, useState } from "rea
 import { io, type Socket } from "socket.io-client";
 import type {
   ClientToServerEvents,
-  EncryptedMessage,
+  RoomRecord,
   ErrorCode,
   ServerToClientEvents,
 } from "../shared/types.js";
@@ -13,7 +13,7 @@ import { navigate } from "./navigation";
 import { ParticipantPanel } from "./ParticipantPanel";
 import { RoomHeader } from "./RoomHeader";
 import { Toast, type ToastMessage } from "./Toast";
-import { type ChatMessage, initialRoomState, type PendingMessage, roomReducer } from "./roomState";
+import { type ChatRecord, initialRoomState, type PendingMessage, roomReducer } from "./roomState";
 
 type ChatSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 type SendableMessage = Pick<PendingMessage, "clientId" | "body" | "ciphertext" | "iv">;
@@ -22,8 +22,12 @@ const ackTimeoutMs = 10_000;
 // "Loading messages..." shows only when the history takes longer than this.
 const loadingNoteDelayMs = 300;
 
-async function decryptMessage(key: RoomKey, message: EncryptedMessage): Promise<ChatMessage> {
-  const { ciphertext, iv, ...rest } = message;
+// Only messages are encrypted. Join and leave events pass through as they are.
+async function decryptRecord(key: RoomKey, record: RoomRecord): Promise<ChatRecord> {
+  if (record.kind !== "message") {
+    return record;
+  }
+  const { ciphertext, iv, ...rest } = record;
   try {
     return { ...rest, body: await decrypt(key, { ciphertext, iv }) };
   } catch {
@@ -31,10 +35,10 @@ async function decryptMessage(key: RoomKey, message: EncryptedMessage): Promise<
   }
 }
 
-async function decryptMessages(key: RoomKey, messages: EncryptedMessage[]) {
-  const decrypted: ChatMessage[] = [];
-  for (const message of messages) {
-    decrypted.push(await decryptMessage(key, message));
+async function decryptRecords(key: RoomKey, records: RoomRecord[]) {
+  const decrypted: ChatRecord[] = [];
+  for (const record of records) {
+    decrypted.push(await decryptRecord(key, record));
   }
   return decrypted;
 }
@@ -97,7 +101,7 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
           return;
         }
         setJoinError(null);
-        const messages = await decryptMessages(roomKey, result.messages);
+        const messages = await decryptRecords(roomKey, result.messages);
         let lastId = 0;
         for (const message of messages) {
           lastId = Math.max(lastId, message.id);
@@ -115,8 +119,8 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
       dispatch({ type: "connection", connection: socket.active ? "reconnecting" : "disconnected" });
     };
 
-    const handleNewMessage = async (message: EncryptedMessage) => {
-      dispatch({ type: "received", messages: [await decryptMessage(roomKey, message)] });
+    const handleNewMessage = async (record: RoomRecord) => {
+      dispatch({ type: "received", messages: [await decryptRecord(roomKey, record)] });
     };
 
     socket.on("connect", handleConnect);
@@ -198,7 +202,8 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
   let listNote: string | null = null;
   if (!state.historyLoaded) {
     listNote = loadingIsSlow ? "Loading messages..." : null;
-  } else if (state.messages.length === 0 && state.pending.length === 0) {
+  } else if (state.pending.length === 0 && !state.messages.some((record) => record.kind === "message")) {
+    // Join and leave events alone do not count as a conversation.
     listNote = "No messages yet.";
   }
 
@@ -228,6 +233,7 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, browserToken 
             messages={state.messages}
             pending={state.pending}
             displayName={displayName}
+            presenceKey={state.presenceKey}
             historyEndId={historyEndId}
             note={listNote}
             toast={<Toast message={toast} onDismiss={() => setToast(null)} />}
