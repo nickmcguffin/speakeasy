@@ -392,6 +392,45 @@ textarea:hover {
   margin-top: 0;
 }
 
+/* Leave dialog: a native modal <dialog>. */
+.leave-dialog {
+  box-sizing: border-box;
+  width: min(32rem, calc(100vw - 2rem));
+  padding: 1.5rem;
+  border: 1px solid var(--divider);
+  border-radius: 0.875rem;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.25);
+}
+
+.leave-dialog::backdrop {
+  background: rgb(0 0 0 / 0.45);
+}
+
+.leave-dialog h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.25rem;
+  font-weight: 650;
+}
+
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+@media (max-width: 479.98px) {
+  .dialog-actions {
+    flex-direction: column;
+  }
+
+  .dialog-actions button {
+    width: 100%;
+  }
+}
+
 /* Share panel: at the top of the list until the first message. */
 .share-panel {
   box-sizing: border-box;

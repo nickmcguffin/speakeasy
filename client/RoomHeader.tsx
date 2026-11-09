@@ -23,7 +23,7 @@ type RoomHeaderProps = {
   onTogglePanel: () => void;
   onCopy: (trigger: HTMLElement) => void;
   onCloseFallback: () => void;
-  onLeave: () => void;
+  onLeave: (trigger: HTMLElement) => void; // the Leave room button and the logo link
 };
 
 export function RoomHeader({
@@ -62,7 +62,7 @@ export function RoomHeader({
 
   return (
     <>
-      <AppHeader>
+      <AppHeader onLeave={onLeave}>
         <div className="room-title">
           <h1 title={roomName ?? undefined}>{roomName}</h1>
           <p className="connection" data-state={connection} role="status">
@@ -88,7 +88,7 @@ export function RoomHeader({
             <span className="button-label">{copyLabel}</span>
           </button>
           <ThemeToggle />
-          <button type="button" className="secondary" onClick={onLeave} aria-label="Leave room">
+          <button type="button" className="secondary" onClick={(event) => onLeave(event.currentTarget)} aria-label="Leave room">
             <LogOut size={18} aria-hidden="true" />
             <span className="button-label">Leave room</span>
           </button>

@@ -9,7 +9,8 @@ import type {
 import { Composer, type ComposerHandle } from "./Composer";
 import { decrypt, encrypt, type RoomKey } from "./crypto";
 import { MessageList } from "./MessageList";
-import { navigate } from "./navigation";
+import { LeaveDialog } from "./LeaveDialog";
+import { navigate, readRoomEntryState, updateRoomEntryState } from "./navigation";
 import { ParticipantPanel } from "./ParticipantPanel";
 import { failuresBeforeErrorScreen, retryDelayMs } from "./retry";
 import { RoomHeader } from "./RoomHeader";
@@ -59,7 +60,14 @@ type ChatRoomProps = {
 };
 
 export function ChatRoom({ roomId, roomName, displayName, roomKey, lookupRetrying, browserToken }: ChatRoomProps) {
-  const [state, dispatch] = useReducer(roomReducer, initialRoomState);
+  // The link-saved flag starts from this tab's history entry, so a refresh keeps it.
+  const [state, dispatch] = useReducer(roomReducer, initialRoomState, (initial) => ({
+    ...initial,
+    linkSaved: readRoomEntryState().linkSaved,
+  }));
+  const [createdHere] = useState(() => readRoomEntryState().createdHere);
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
+  const leaveTriggerRef = useRef<HTMLElement | null>(null);
   // Failed joins in a row (network error, SERVER_ERROR or no ack in time). Reset by a join.
   const [joinFailures, setJoinFailures] = useState(0);
   // ROOM_NOT_FOUND from the join is final: the room is gone.
@@ -230,9 +238,32 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, lookupRetryin
 
   // Closes the connection first, so the others see this browser leave without waiting for the
   // room screen to unmount.
-  const handleLeave = () => {
+  const leave = () => {
     socketRef.current?.disconnect();
     navigate("/");
+  };
+
+  // Leaving is hard to reverse only for the tab that created the room and never saved the link,
+  // so only then the dialog asks first. Back and closing the tab are not intercepted.
+  const requestLeave = (trigger: HTMLElement) => {
+    if (createdHere && !state.linkSaved) {
+      leaveTriggerRef.current = trigger;
+      setLeaveDialogOpen(true);
+      return;
+    }
+    leave();
+  };
+
+  // If the copy fails, the fallback panel shows the link and the user stays. Both changes go in
+  // one update, so the dialog closes before the fallback field takes focus.
+  const handleCopyAndLeave = async () => {
+    copyTriggerRef.current = leaveTriggerRef.current;
+    if (await copyToClipboard()) {
+      leave();
+      return;
+    }
+    setLeaveDialogOpen(false);
+    setFallbackLink(location.href);
   };
 
   const closePanel = useCallback(() => {
@@ -250,17 +281,15 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, lookupRetryin
 
   const saveLink = () => {
     dispatch({ type: "linkSaved" });
+    updateRoomEntryState({ linkSaved: true });
   };
 
   // One copy for the header, the share panel and the leave dialog. The link is the page address,
-  // which includes the key after #. Returns false when the fallback panel had to show it.
-  const copyLink = async (trigger: HTMLElement | null) => {
-    const link = location.href;
-    copyTriggerRef.current = trigger;
+  // which includes the key after #. On success: the tick, the toast, and the link counts as saved.
+  const copyToClipboard = async () => {
     try {
-      await navigator.clipboard.writeText(link);
+      await navigator.clipboard.writeText(location.href);
     } catch {
-      setFallbackLink(link);
       return false;
     }
     setFallbackLink(null);
@@ -268,6 +297,14 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, lookupRetryin
     setToast({ id: Date.now(), text: "Link copied" });
     saveLink();
     return true;
+  };
+
+  // The header and share panel buttons: when the copy fails, the fallback panel shows the link.
+  const copyLink = async (trigger: HTMLElement) => {
+    copyTriggerRef.current = trigger;
+    if (!(await copyToClipboard())) {
+      setFallbackLink(location.href);
+    }
   };
 
   const closeFallback = () => {
@@ -326,7 +363,7 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, lookupRetryin
         onTogglePanel={handleTogglePanel}
         onCopy={copyLink}
         onCloseFallback={closeFallback}
-        onLeave={handleLeave}
+        onLeave={requestLeave}
       />
       <main className="room-body">
         <div className="conversation">
@@ -358,6 +395,13 @@ export function ChatRoom({ roomId, roomName, displayName, roomKey, lookupRetryin
           onClose={closePanel}
         />
       </main>
+      <LeaveDialog
+        open={leaveDialogOpen}
+        returnFocusTo={leaveTriggerRef}
+        onCopyAndLeave={handleCopyAndLeave}
+        onLeaveAnyway={leave}
+        onStay={() => setLeaveDialogOpen(false)}
+      />
     </div>
   );
 }
