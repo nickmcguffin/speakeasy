@@ -84,10 +84,19 @@ The server serves the built client from `client/dist` whenever that folder exist
 2. Client checks `GET /api/rooms/:roomId`. While it runs, the screen already has its final layout (see "Room loading" in section 12). A 404 replaces it with the "room not found" screen. Otherwise the client decrypts the room name with the key and shows it in the heading, with the tab title `<name> | Speakeasy`. A room with no name, or a name that does not decrypt (for example with a wrong key), shows "Untitled room" and the page works as normal. The title goes back to "Speakeasy" when the room screen closes.
 3. Client gets the display name from local storage, or asks for it. The name prompt shows at once, with an empty heading until the room name is decrypted, and a 404 replaces it.
 4. Client emits `room:join { roomId, displayName, browserToken }`. The browser token is described in "Presence".
-5. Server validates and leaves any other room the socket was already in, then sends `room:presence` to that room. It puts the socket in the Socket.IO room and stores `roomId`, `displayName`, `browserToken` and a join counter on `socket.data`. It joins before it loads, so a message sent in between is not missed. A duplicate from that overlap is dropped by id on the client.
-6. If loading the messages fails, the socket leaves the room and its join data is cleared before the `SERVER_ERROR` ack, so it is not counted in presence and cannot send.
-7. Otherwise the server acks with the browser's `presenceKey` and the last 50 messages in ascending id order, then sends `room:presence` to everyone in the room once.
-8. Client decrypts each message. A message that fails to decrypt shows as "Unable to decrypt this message".
+5. Server validates and leaves any other room the socket was already in, then sends `room:presence` to that room. It puts the socket in the Socket.IO room and stores `roomId`, `displayName`, `browserToken`, the browser's `presenceKey` and a join counter on `socket.data`. It joins before it loads, so a message sent in between is not missed. A duplicate from that overlap is dropped by id on the client.
+6. The server cancels any pending "left" timer for this browser in this room and, if the browser's last join or leave event in this room is not a join, stores a `join` event (see "Join and leave events"). This happens before the history loads, so the joiner gets the event in its history. The event goes to the other sockets in the room with `message:new`.
+7. If loading the messages fails, the socket leaves the room and its join data is cleared before the `SERVER_ERROR` ack, so it is not counted in presence and cannot send. It counts as leaving the room, so a stored join gets its "left" event 5 seconds later.
+8. Otherwise the server acks with the browser's `presenceKey` and the last 50 rows (messages and events) in ascending id order, then sends `room:presence` to everyone in the room once.
+9. Client decrypts each message. Events have nothing to decrypt. A message that fails to decrypt shows as "Unable to decrypt this message".
+
+### Join and leave events
+1. Join and leave events are rows in the `messages` table with `kind` `'join'` or `'leave'`, the browser's `presenceKey` as `author_key`, the display name from the join, and no `client_id`, `ciphertext` or `iv`. They are stored in plain text (see Known limits in the README).
+2. **Joined.** On a successful join, a `join` event is stored only when the last join or leave event of this `author_key` in this room is not a join. A second tab, a duplicated tab, a refresh or a reconnect of a browser that is still counted as present makes no event.
+3. **Left.** When a socket leaves a room (disconnect, or joining another room) and it was the browser's last connection there, the server starts a 5-second timer keyed by room and `presenceKey`. A join of that browser cancels it. When it fires, the server checks again that the browser has no connection in the room and stores a `leave` event only when its last event is a join. The `leave` event keeps the name from that join. It goes to the whole room with `message:new`.
+4. A refresh closes the old connection and joins again within the 5 seconds, so it makes no events, also when a tunnel loses the old connection's close (the browser token keeps it one participant).
+5. Event decisions for one browser in one room run one at a time in the server process, so two tabs joining together, or a join while the timer fires, cannot store two events. This relies on one server instance (see section 9).
+6. Timers live in memory. A server restart drops pending timers: a browser that reconnects after the restart makes no new events (its last event is still a join), but one that never comes back never gets its "left" event.
 
 ### Presence
 1. `room:presence` carries the room's full participant list, `[{ presenceKey, name }]`, with one entry per browser. The server builds it from `fetchSockets()` on the Socket.IO room, counts only sockets with a `browserToken` (set only by a successful join), and groups them by that token. Entries are ordered by the earliest join among each browser's open connections, and show the name from the browser's latest join.
@@ -103,14 +112,14 @@ Presence follows the server's view of the connection, so a browser whose network
 1. Client checks the plain text length, makes a `clientId` (UUID), and adds the message to the list with status `sending`.
 2. Client generates a random 12-byte initialisation vector (nonce) and encrypts the text with `crypto.subtle.encrypt`.
 3. Client emits `message:send { clientId, ciphertext, iv }` with a 10-second ack timeout.
-4. Server checks that the socket has joined (`NOT_JOINED` if not), validates the shape and size, and inserts with `ON CONFLICT (room_id, client_id) DO NOTHING`. The author name comes from `socket.data`, not from the payload.
+4. Server checks that the socket has joined (`NOT_JOINED` if not), validates the shape and size, and inserts with `ON CONFLICT (room_id, client_id) DO NOTHING`. The author name and the `author_key` (the browser's `presenceKey`) come from `socket.data`, not from the payload.
 5. Server acks the sender with the stored message. The client replaces the pending message, and the status becomes `sent`.
 6. Only when a row was inserted, the server broadcasts `message:new` to the other sockets in the room (`socket.to(roomId)`), so the sender does not receive a duplicate.
 7. If the ack times out or returns an error, the status becomes `failed` with a retry action. A retry sends the same `clientId`, ciphertext and IV. If the first attempt was stored, the insert hits the conflict, and the server selects the stored row, acks with it and does not broadcast again.
 
 ### Reconnect
 1. Socket.IO reconnects automatically. The new server-side socket is not in any room. When the server saw the old connection close, it has already sent the room a list without it.
-2. On `connect`, the client emits `room:join` again with `since` set to the ID of the last confirmed message it has, and the same browser token, so it keeps the same entry.
+2. On `connect`, the client emits `room:join` again with `since` set to the ID of the last row it has (message or event), and the same browser token, so it keeps the same entry. Events missed while disconnected arrive with this catch-up.
 3. Server acks with only the messages after `since`, at most 200. If more than 200 were missed, it returns the newest 200, so the current conversation shows and the oldest missed messages are skipped. The client decrypts them and merges them by message ID.
 4. While disconnected, the client keeps showing its last participant list. The next `room:presence` after the rejoin replaces it.
 
@@ -142,32 +151,38 @@ type SendPayload = { clientId: string; ciphertext: string; iv: string };
 
 **Server to client**
 ```ts
-"message:new": (message: EncryptedMessage) => void
+"message:new": (record: RoomRecord) => void  // a message or a join or leave event
 "room:presence": (participants: Participant[]) => void  // the full list, in join order
 ```
 
 **Socket data**, set by a successful `room:join`:
 ```ts
-type SocketData = { roomId: string; displayName: string; browserToken: string; joinOrder: number };
+type SocketData = { roomId: string; displayName: string; browserToken: string; presenceKey: string; joinOrder: number };
 ```
 
 - Every handler acks, with `SERVER_ERROR` on any exception. If the client sends no ack function, the server skips the reply instead of crashing.
 - The server treats every payload as unknown input and validates it, whatever the types say.
-- Logs contain socket IDs and room IDs only, never display names or message content.
+- Logs contain socket IDs and room IDs only, never display names, message content, browser tokens or presence keys.
 - `room:presence` goes to the whole room, including the socket that just joined. A client can receive it before or after its join ack.
 
 **Shared types**
 ```ts
-// What the server stores and sends. It never contains plain text.
-type EncryptedMessage = {
-  id: number;          // server ID, used for ordering and the `since` cursor
-  clientId: string;
+// Every row the server stores and sends: a message or a join or leave event.
+type RecordBase = {
+  id: number;                // server ID, used for ordering and the `since` cursor (any kind)
   roomId: string;
-  authorName: string;  // plain text (see Known limits)
-  ciphertext: string;  // base64url, AES-GCM output including the auth tag
-  iv: string;          // base64url, 12 bytes
-  createdAt: string;   // ISO 8601
+  authorName: string;        // plain text (see Known limits)
+  authorKey: string | null;  // the author's presenceKey. null for rows from before author keys
+  createdAt: string;         // ISO 8601
 };
+type EncryptedMessage = RecordBase & {
+  kind: "message";
+  clientId: string;
+  ciphertext: string;        // base64url, AES-GCM output including the auth tag
+  iv: string;                // base64url, 12 bytes
+};
+type RoomEvent = RecordBase & { kind: "join" | "leave" };  // no encrypted fields
+type RoomRecord = EncryptedMessage | RoomEvent;
 
 type ErrorCode = "ROOM_NOT_FOUND" | "NOT_FOUND" | "INVALID_INPUT" | "NOT_JOINED" | "SERVER_ERROR";
 
@@ -185,16 +200,17 @@ type RoomResponse = {                                                  // GET /a
 // Socket.IO
 type Participant = { presenceKey: string; name: string };  // one browser, however many tabs
 type JoinResult =
-  | { ok: true; presenceKey: string; messages: EncryptedMessage[] }
+  | { ok: true; presenceKey: string; messages: RoomRecord[] }
   | { ok: false; error: ErrorCode };
 type SendResult = { ok: true; message: EncryptedMessage } | { ok: false; error: ErrorCode };
 ```
 
-The client-only type adds the decrypted text:
+The client-only types add the decrypted text:
 ```ts
 type ChatMessage = Omit<EncryptedMessage, "ciphertext" | "iv"> & {
   body: string | null; // null when decryption fails
 };
+type ChatRecord = ChatMessage | RoomEvent;
 ```
 
 ### Validation
@@ -239,6 +255,18 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE INDEX IF NOT EXISTS messages_room_id_id ON messages (room_id, id);
+
+-- Join and leave events, and an author key on every row
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'message';
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS author_key text;
+ALTER TABLE messages ALTER COLUMN client_id DROP NOT NULL;
+ALTER TABLE messages ALTER COLUMN ciphertext DROP NOT NULL;
+ALTER TABLE messages ALTER COLUMN iv DROP NOT NULL;
+-- messages_kind_fields, added in a DO block only when pg_constraint does not have it:
+--   (kind = 'message' AND client_id, ciphertext and iv are NOT NULL)
+--   OR (kind IN ('join', 'leave') AND author_key IS NOT NULL AND client_id, ciphertext and iv are NULL)
+CREATE INDEX IF NOT EXISTS messages_room_author_events
+  ON messages (room_id, author_key, id) WHERE kind IN ('join', 'leave');
 ```
 
 - **`bigint` identity ID:** gives a strict order and a simple `since` cursor. Timestamps can tie.
@@ -248,6 +276,10 @@ CREATE INDEX IF NOT EXISTS messages_room_id_id ON messages (room_id, id);
 - **Encrypted room name:** `name_ciphertext` and `name_iv` hold the optional name, encrypted like a message. Both are null when there is no name.
 - **Schema setup:** the server runs this file at startup. It is idempotent. A migration tool is not needed for two tables.
 - **Added columns:** `CREATE TABLE IF NOT EXISTS` does not change a table that already exists, as in production. Columns added later use `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. They are nullable, so rooms created before them have no name, and the previous server version can still insert rooms after the change.
+- **Events in the messages table:** join and leave events are rows of `kind` `'join'` or `'leave'`, so the history and the `since` catch-up return them in order with the messages, with no second query. The CHECK constraint keeps messages with their encrypted fields and events without any.
+- **`author_key`:** the author's `presenceKey`, on messages and events. It tells two people with the same name apart, and finds your own messages. Rows from before it have none, and are never shown as yours.
+- **Idempotent constraint:** Postgres has no `ADD CONSTRAINT IF NOT EXISTS`, so a `DO` block checks `pg_constraint` first. The `kind` default fills existing rows with `'message'`, so the constraint holds on old data.
+- **Last-event index:** the partial index on `(room_id, author_key, id)` for join and leave rows serves the "last event of this browser in this room" lookup.
 - **Database access:** the `pg` package with a connection pool and plain parameterised SQL. No ORM.
 - **Later-list:** `rooms.expires_at` for the expiry setting.
 
@@ -262,7 +294,7 @@ type SendFailure = "network" | "server" | "invalid";  // no ack in time, SERVER_
 
 type RoomState = {
   connection: ConnectionState;
-  messages: ChatMessage[];                  // confirmed and decrypted, ordered by id
+  messages: ChatRecord[];                   // confirmed messages (decrypted) and events, by id
   pending: { clientId: string; body: string; status: MessageStatus;
              queuedAt: string; failure?: SendFailure;
              ciphertext?: string; iv?: string }[];
@@ -292,7 +324,8 @@ type RoomState = {
 - `linkSaved` becomes true after a successful copy of the link, for the leave confirmation (not built yet).
 - `historyLoaded` becomes true with the first join ack. Until then the list shows no "No messages yet.".
 - Until the room lookup has found the room, `ChatRoom` gets `roomName` and `roomKey` as null: it shows the room layout and does not connect.
-- Your own messages are the ones whose author name is your display name, so they also include messages from another person with the same name (see Known limits in the README).
+- Your own messages and events are the ones whose `authorKey` equals your `presenceKey`. A row with no `authorKey` (from before author keys) is never yours. Two tabs of one browser share the key, so both show its messages as yours.
+- Only messages are decrypted. Messages and events are merged and ordered by id, and `since` is the id of the last row of any kind.
 - On a disconnect the list is kept as it was, with "(you)" still on the old entry, until the first `room:presence` after the rejoin. The room screen shows the count and the names, and nothing before the first list arrives.
 
 ## 7. Error handling
@@ -329,7 +362,8 @@ type RoomState = {
 - **Load:** one small Node process can hold thousands of idle sockets. Demo traffic uses a very small part of that. Encryption runs in the browser, so it adds no server load.
 - **Database:** Neon free tier is enough. Compute scales to zero when idle and resumes quickly.
 - **Single instance:** Socket.IO rooms live in process memory, so a second instance would not see the first instance's rooms. This is accepted for the MVP.
-- **Presence after a network loss:** a closed tab or a clean disconnect leaves the list at once, as soon as it was the browser's last connection in the room. With `closeOnBeforeunload`, this also holds through a tunnel that loses the browser's close. A user who loses the network without a clean close (Wi-Fi drops, laptop sleeps) stays in the list until the Socket.IO ping timeout. The server uses the defaults, a ping every 25 seconds and 20 seconds to answer, so that is between about 20 and 45 seconds. In testing it was 30 and 43 seconds. If that browser reconnects on a new connection first, for example after a refresh through a tunnel or a network switch, both connections share its browser token, so it stays one entry. The old connection is dropped at the ping timeout without any visible change. Shorter ping settings would shorten this, at the cost of more traffic and more false disconnects on slow mobile networks.
+- **Presence after a network loss:** a closed tab or a clean disconnect leaves the list at once, as soon as it was the browser's last connection in the room. With `closeOnBeforeunload`, this also holds through a tunnel that loses the browser's close. A user who loses the network without a clean close (Wi-Fi drops, laptop sleeps) stays in the list until the Socket.IO ping timeout. The server uses the defaults, a ping every 25 seconds and 20 seconds to answer, so that is between about 20 and 45 seconds. In testing it was 30 and 43 seconds. If that browser reconnects on a new connection first, for example after a refresh through a tunnel or a network switch, both connections share its browser token, so it stays one entry. The old connection is dropped at the ping timeout without any visible change. Shorter ping settings would shorten this, at the cost of more traffic and more false disconnects on slow mobile networks. The "left" event follows 5 seconds after the server drops the connection, so after a network loss it appears after the ping timeout plus 5 seconds: 50.8 seconds in testing.
+- **Events and one instance:** pending "left" timers and the per-browser event queue live in process memory, like Socket.IO rooms. A second instance would need them in shared storage.
 - **Monitoring:** Render logs and the `/api/health` check.
 
 ## 10. Trade-offs
@@ -441,7 +475,7 @@ All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
 - Long words and links wrap anywhere (`overflow-wrap: anywhere`), and line breaks are kept.
 
 ### Message groups
-- A new group starts when the author changes, or when more than 2 minutes pass between two messages (`groupGapMs` in `MessageList.tsx`). After step 7e, an event between two messages also starts one.
+- A new group starts when the author changes (by `authorKey`, or by name for rows without one), when more than 2 minutes pass between two messages (`groupGapMs` in `MessageList.tsx`), or after a join or leave event.
 - The first message of a group of other people's messages shows the name, also when a pause started the group.
 - The time shows once per group, on its last message. A sending message always shows "Sending...", with the time when it is the last of its group.
 
@@ -452,6 +486,8 @@ All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
 - The room fits exactly in `100dvh` and only the message list scrolls. The list's scroll container is `position: relative`, so the visually hidden "You" labels inside it scroll and clip with it. Without that, labels below the view made the whole page taller.
 - The list's scroll container is focusable (`tabIndex 0`, a region named "Conversation"), so the keyboard can scroll it, and its focus ring is an inset outline. When it has focus, Enter moves focus to the composer, and a printable key moves focus to the composer and adds that character to the end of the draft. Space, the arrow keys, Page Up, Page Down, Home, End, Tab and shortcuts with Ctrl, Meta or Alt keep their normal behaviour. A click in the list still focuses it, so text can be selected and copied.
 - Wrong key: if the history has messages and none decrypt, a warning banner and sending is disabled.
+- Join and leave events: small, centred `muted` text, "Bob joined the room" or "Bob left the room", and "You joined the room" or "You left the room" for your own browser. Not bubbles, no time. An event ends a message group. New events slide in like new messages; events from the history do not.
+- "No messages yet." shows while the room has no messages, even when it has events.
 
 ### Motion
 One moment only: a short slide-in (180 ms) for new messages. History and catch-up messages from a join do not slide in. Controls also change colour with a 150 ms transition on hover. No motion at all when the user prefers reduced motion.
