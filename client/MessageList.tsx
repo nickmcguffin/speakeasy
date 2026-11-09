@@ -123,6 +123,16 @@ export function MessageList({
   const lastMessageId = messages.at(-1)?.id;
   const lastPendingId = pending.at(-1)?.clientId;
   const seenPendingIdRef = useRef(lastPendingId);
+  // Only a new message from someone else offers "New messages". Events and your own messages do not.
+  let lastOtherMessageId: number | undefined;
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const record = messages[index];
+    if (record.kind === "message" && !(record.authorKey !== null && record.authorKey === presenceKey)) {
+      lastOtherMessageId = record.id;
+      break;
+    }
+  }
+  const seenOtherMessageIdRef = useRef(lastOtherMessageId);
 
   const scrollToBottom = () => {
     const scroller = scrollRef.current;
@@ -143,9 +153,10 @@ export function MessageList({
     }
     if (atBottomRef.current) {
       scrollToBottom();
-    } else if (lastMessageId !== undefined) {
+    } else if (lastOtherMessageId !== undefined && lastOtherMessageId !== seenOtherMessageIdRef.current) {
       setHasNewBelow(true);
     }
+    seenOtherMessageIdRef.current = lastOtherMessageId;
   }, [lastMessageId, lastPendingId]);
 
   // The list area shrinks when the composer grows or the mobile keyboard opens. Stay at the bottom.
