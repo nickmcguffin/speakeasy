@@ -238,6 +238,7 @@ textarea:hover {
 
 .header-actions button {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 0.5rem;
   min-height: 2.5rem;
@@ -276,19 +277,23 @@ textarea:hover {
   text-overflow: ellipsis;
 }
 
+/* One line, cut with an ellipsis like the room name, so it never runs under the buttons. */
 .connection {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
+  overflow: hidden;
   color: var(--muted);
   font-size: 0.8125rem;
   line-height: 1.4;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* The text always says the state. The dot only adds colour: filled when connected or
    disconnected, an outline while connecting. */
 .connection-dot {
+  display: inline-block;
   box-sizing: border-box;
+  margin-right: 0.375rem;
+  vertical-align: 0.05em;
   width: 0.5rem;
   height: 0.5rem;
   border: 1.5px solid currentColor;
@@ -692,8 +697,9 @@ button.small {
   }
 }
 
-/* Phones: the room header keeps the logo mark and icon buttons. Their names stay for screen readers. */
-@media (max-width: 639.98px) {
+/* Below 900px, where the participant button appears, the room header keeps the logo mark and
+   icon-only buttons. Their names stay for screen readers. */
+@media (max-width: 899.98px) {
   .room .logo-text,
   .room .button-label {
     position: absolute;
@@ -719,7 +725,7 @@ button.small {
     padding-left: 0.625rem;
   }
 
-  .app-header {
+  .room .app-header {
     gap: 0.625rem;
   }
 }
