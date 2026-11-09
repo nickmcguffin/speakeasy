@@ -2,6 +2,8 @@ import type { EncryptedMessage, Participant } from "../shared/types.js";
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected";
 export type MessageStatus = "sending" | "sent" | "failed";
+// Why a send failed: no ack in time, a server error, or input the server rejected (no Retry).
+export type SendFailure = "network" | "server" | "invalid";
 
 export type ChatMessage = Omit<EncryptedMessage, "ciphertext" | "iv"> & {
   body: string | null; // null when decryption fails
@@ -11,6 +13,8 @@ export type PendingMessage = {
   clientId: string;
   body: string;
   status: MessageStatus;
+  queuedAt: string; // ISO 8601, shown until the server's time arrives
+  failure?: SendFailure;
   ciphertext?: string;
   iv?: string;
 };
@@ -21,6 +25,8 @@ export type RoomState = {
   pending: PendingMessage[]; // in send order
   participants: Participant[]; // the last room:presence list, kept while disconnected
   presenceKey: string | null; // this browser's entry, from the latest join ack
+  linkSaved: boolean; // true after the link was copied in this room screen
+  historyLoaded: boolean; // true after the first join ack, which carries the history
 };
 
 export type RoomAction =
@@ -28,10 +34,11 @@ export type RoomAction =
   | { type: "joined"; presenceKey: string }
   | { type: "presence"; participants: Participant[] }
   | { type: "received"; messages: ChatMessage[] }
-  | { type: "queued"; clientId: string; body: string }
+  | { type: "queued"; clientId: string; body: string; queuedAt: string }
   | { type: "encrypted"; clientId: string; ciphertext: string; iv: string }
   | { type: "sending"; clientId: string }
-  | { type: "failed"; clientId: string };
+  | { type: "failed"; clientId: string; failure: SendFailure }
+  | { type: "linkSaved" };
 
 export const initialRoomState: RoomState = {
   connection: "connecting",
@@ -39,6 +46,8 @@ export const initialRoomState: RoomState = {
   pending: [],
   participants: [],
   presenceKey: null,
+  linkSaved: false,
+  historyLoaded: false,
 };
 
 // Merges by id, so a message that arrives twice (join backfill and broadcast) shows once.
@@ -69,7 +78,7 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
     // The join ack and room:presence can arrive in either order. They set separate fields,
     // and "(you)" is matched when both are there.
     case "joined":
-      return { ...state, connection: "connected", presenceKey: action.presenceKey };
+      return { ...state, connection: "connected", presenceKey: action.presenceKey, historyLoaded: true };
 
     case "presence":
       return { ...state, participants: action.participants };
@@ -93,7 +102,10 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
     case "queued":
       return {
         ...state,
-        pending: [...state.pending, { clientId: action.clientId, body: action.body, status: "sending" }],
+        pending: [
+          ...state.pending,
+          { clientId: action.clientId, body: action.body, status: "sending", queuedAt: action.queuedAt },
+        ],
       };
 
     case "encrypted":
@@ -106,9 +118,18 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
       };
 
     case "sending":
-      return { ...state, pending: updatePending(state.pending, action.clientId, { status: "sending" }) };
+      return {
+        ...state,
+        pending: updatePending(state.pending, action.clientId, { status: "sending", failure: undefined }),
+      };
 
     case "failed":
-      return { ...state, pending: updatePending(state.pending, action.clientId, { status: "failed" }) };
+      return {
+        ...state,
+        pending: updatePending(state.pending, action.clientId, { status: "failed", failure: action.failure }),
+      };
+
+    case "linkSaved":
+      return { ...state, linkSaved: true };
   }
 }

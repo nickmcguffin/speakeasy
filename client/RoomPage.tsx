@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { RoomResponse } from "../shared/types.js";
+import { AppHeader } from "./AppHeader";
 import { ChatRoom } from "./ChatRoom";
 import { decrypt, importKey, type RoomKey } from "./crypto";
 import { getBrowserToken } from "./browserToken";
@@ -95,15 +96,6 @@ export function RoomPage({ roomId, encodedKey }: RoomPageProps) {
     setAttempt((count) => count + 1);
   };
 
-  if (room.status === "loading") {
-    return (
-      <main className="page">
-        <p className="lead muted" role="status">
-          Loading room...
-        </p>
-      </main>
-    );
-  }
   if (room.status === "incomplete-link") {
     return (
       <StateScreen
@@ -120,7 +112,7 @@ export function RoomPage({ roomId, encodedKey }: RoomPageProps) {
       />
     );
   }
-  if (room.status === "failed" || !room.roomKey) {
+  if (room.status === "failed") {
     return (
       <StateScreen
         title="Could not load the room"
@@ -129,15 +121,28 @@ export function RoomPage({ roomId, encodedKey }: RoomPageProps) {
       />
     );
   }
+  // While the lookup runs, the screen already has its final layout. The name fills in once it
+  // is decrypted, so "Untitled room" never shows before a real name.
+  const found = room.status === "found";
+  const roomName = found ? (room.roomName ?? untitledRoom) : null;
+  if (!displayName) {
+    return (
+      <>
+        <AppHeader />
+        <main className="page">
+          <h1>{roomName}</h1>
+          <NamePrompt onSubmit={setDisplayName} />
+        </main>
+      </>
+    );
+  }
   return (
-    // The chat screen is styled in a later step. Until then only the name prompt uses the column.
-    <main className={displayName ? undefined : "page"}>
-      <h1>{room.roomName ?? untitledRoom}</h1>
-      {displayName ? (
-        <ChatRoom roomId={roomId} displayName={displayName} roomKey={room.roomKey} browserToken={browserToken} />
-      ) : (
-        <NamePrompt onSubmit={setDisplayName} />
-      )}
-    </main>
+    <ChatRoom
+      roomId={roomId}
+      roomName={roomName}
+      displayName={displayName}
+      roomKey={found ? room.roomKey : null}
+      browserToken={browserToken}
+    />
   );
 }

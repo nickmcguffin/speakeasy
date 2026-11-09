@@ -44,7 +44,7 @@ Due to my current role and having to cover someone on leave for the next week, I
 - **Render** to host the Node server, because it runs a long-lived process that can hold WebSocket connections.
 
 ## Design decisions
-- Clean, minimal and modern, dark theme first, with light mode from the system setting.
+- Clean, minimal and modern. Light and dark themes follow the system setting, and a toggle in the header switches between them.
 - One sans-serif font and one accent colour. Hierarchy comes from size and weight.
 - Short, subtle motion, disabled when the user prefers reduced motion.
 - Fast paths: one click to create a room, one field to join, Enter to send.
@@ -79,6 +79,7 @@ This is end-to-end encryption with one shared key per room, the same pattern as 
 - A leaked link gives access to the room and its full history. Links and keys cannot be changed.
 - The full link and the room name stay in the browser history of each device that opens the room.
 - Display names and timestamps are not encrypted, so the server knows who spoke and when.
+- Your own messages are recognised by display name. Two people with the same name each see the other's messages on their own side.
 - The server can only limit the size of the encrypted data, not check the message text.
 - No moderation, editing or deleting of messages.
 - After a very long disconnect, only the newest 200 missed messages load.

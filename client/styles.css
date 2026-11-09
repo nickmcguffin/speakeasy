@@ -1,34 +1,30 @@
-/* Tokens from DESIGN.md section 12. Dark mode follows the system setting. */
+/* Tokens from DESIGN.md section 12. light-dark() picks a value from the color-scheme: the system
+   setting, or the theme the user chose, which index.html sets as data-theme on <html>. */
 :root {
   color-scheme: light dark;
-  --bg: #f3f5f3;
-  --surface: #ffffff;
-  --divider: #e1e7e3;
-  --text: #17201b;
-  --muted: #5c6660;
-  --field-border: #73897d;
-  --accent: #1f5c45;
-  --on-accent: #ffffff;
-  --focus: #1f5c45;
-  --danger: #b42318;
+  --bg: light-dark(#e8ede9, #121815);
+  --surface: light-dark(#ffffff, #1b231f);
+  --divider: light-dark(#cad4ce, #2b3530);
+  --chip: light-dark(#e8ede9, #36423b);
+  --text: light-dark(#17201b, #e6ede8);
+  --muted: light-dark(#5c6660, #9aa59f);
+  --field-border: light-dark(#73897d, #5f7468);
+  --accent: light-dark(#1f5c45, #1e5a43);
+  --on-accent: light-dark(#ffffff, #e9f2ec);
+  --on-accent-muted: light-dark(#c2d9cd, #bcd3c7);
+  --focus: light-dark(#1f5c45, #7cc9a1);
+  --danger: light-dark(#b42318, #f28b82);
   --font: "Instrument Sans Variable", system-ui, sans-serif;
   --radius: 0.625rem;
   --transition: 150ms ease;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #121815;
-    --surface: #1b231f;
-    --divider: #2b3530;
-    --text: #e6ede8;
-    --muted: #9aa59f;
-    --field-border: #5f7468;
-    --accent: #1e5a43;
-    --on-accent: #e9f2ec;
-    --focus: #7cc9a1;
-    --danger: #f28b82;
-  }
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 body {
@@ -39,6 +35,11 @@ body {
   font-size: 1rem;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2 {
+  text-wrap: balance;
 }
 
 h1 {
@@ -88,12 +89,13 @@ button.secondary {
 }
 
 button.secondary:hover {
-  background: var(--surface);
+  background: color-mix(in srgb, var(--text) 7%, transparent);
 }
 
+/* Transparent, so muted text keeps its contrast on any background behind the button. */
 button:disabled {
   border-color: var(--divider);
-  background: var(--divider);
+  background: transparent;
   color: var(--muted);
   cursor: not-allowed;
 }
@@ -162,6 +164,17 @@ textarea:hover {
   margin-top: 2rem;
 }
 
+/* State screens centre the title, the text and the action. The home page and the name prompt stay
+   left-aligned. */
+.state-screen {
+  text-align: center;
+}
+
+.state-screen > button {
+  display: block;
+  margin-inline: auto;
+}
+
 .form {
   display: grid;
   gap: 0.5rem;
@@ -170,6 +183,555 @@ textarea:hover {
 .form button {
   justify-self: start;
   margin-top: 0.75rem;
+}
+
+/* Hidden on screen, still read by screen readers. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* App header, on every screen. */
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  box-sizing: border-box;
+  height: calc(56px + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left));
+  border-bottom: 1px solid var(--divider);
+  background: var(--surface);
+}
+
+.logo {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 0.375rem;
+  color: var(--text);
+  font-size: 1.0625rem;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.logo-mark {
+  width: 1.75rem;
+  height: 1.75rem;
+  fill: var(--focus);
+}
+
+.header-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.header-actions button {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.5rem;
+  padding: 0.375rem 0.875rem;
+}
+
+.header-actions .icon-button,
+.icon-button {
+  justify-content: center;
+  width: 2.5rem;
+  min-height: 2.5rem;
+  padding: 0;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Room header: the room name and the connection status, between the logo and the buttons. */
+.room-title {
+  flex: 1;
+  min-width: 0;
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--divider);
+}
+
+.room-title h1 {
+  min-height: 1lh; /* keeps the status line in place while the name is still empty */
+  margin: 0;
+  overflow: hidden;
+  font-size: 1rem;
+  line-height: 1.3;
+  letter-spacing: 0;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* One line, cut with an ellipsis like the room name, so it never runs under the buttons. */
+.connection {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The text always says the state. The dot only adds colour: filled when connected or
+   disconnected, an outline while connecting. */
+.connection-dot {
+  display: inline-block;
+  box-sizing: border-box;
+  margin-right: 0.375rem;
+  vertical-align: 0.05em;
+  width: 0.5rem;
+  height: 0.5rem;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+
+.connection[data-state="connected"] .connection-dot {
+  border-color: var(--focus);
+  background: var(--focus);
+}
+
+.connection[data-state="disconnected"] .connection-dot {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+
+/* Shown when the Clipboard API fails, so the link can be copied by hand. */
+.link-panel {
+  display: grid;
+  gap: 0.375rem;
+  padding: 0.75rem max(1rem, env(safe-area-inset-right)) 0.75rem max(1rem, env(safe-area-inset-left));
+  border-bottom: 1px solid var(--divider);
+  background: var(--surface);
+  font-size: 0.875rem;
+}
+
+.link-panel-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.link-field {
+  min-width: 0;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.875rem;
+}
+
+/* Room: header, then the messages and the side panel, then the composer. */
+.room {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
+.room-body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.conversation {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.message-area {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* A column, so a short conversation can sit at the bottom (margin-top: auto on the list)
+   while a long one still scrolls from the top. position: relative makes it the containing block
+   of the visually hidden "You" labels in the list, so they scroll and clip with it. Without it
+   their containing block is outside the scroller, and labels below the view make the page taller. */
+.message-scroll {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1rem max(1rem, env(safe-area-inset-right)) 1rem max(1rem, env(safe-area-inset-left));
+}
+
+.messages {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 48rem;
+  margin: auto auto 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The focused list shows its ring inside its edges. */
+.message-scroll:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Without messages the note takes all the free space, so it is centred. */
+.messages:empty {
+  margin-top: 0;
+}
+
+/* "Loading messages..." and "No messages yet.", centred in the list area. */
+.empty-note {
+  margin: auto;
+  color: var(--muted);
+  text-align: center;
+}
+
+.message {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-top: 0.25rem;
+}
+
+.message.group-start {
+  margin-top: 1rem;
+}
+
+.message:first-child {
+  margin-top: 0;
+}
+
+.message.mine {
+  align-items: flex-end;
+}
+
+.message.new {
+  animation: slide-in 180ms ease-out;
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+}
+
+/* Other people's bubbles have an edge only in dark mode. In light mode surface on bg is enough. */
+.bubble {
+  box-sizing: border-box;
+  max-width: min(34rem, 85%);
+  padding: 0.5rem 0.875rem 0.375rem;
+  border: 1px solid light-dark(transparent, var(--divider));
+  border-radius: 1.125rem;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+
+.mine .bubble {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.message-author {
+  margin-bottom: 0.125rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.message-text {
+  white-space: pre-wrap;
+}
+
+.placeholder {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.message-meta {
+  margin-top: 0.125rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.mine :is(.message-meta, .placeholder) {
+  color: var(--on-accent-muted);
+}
+
+.message-failed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem 0.75rem;
+  margin-top: 0.375rem;
+  font-size: 0.875rem;
+}
+
+button.small {
+  min-height: 2rem;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+/* "New messages" and the toast, stacked above the composer with an 8px gap. */
+.list-overlay {
+  position: absolute;
+  bottom: 0.75rem;
+  left: 50%;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateX(-50%);
+}
+
+/* The empty live region takes no space, so the gap shows only when a toast is there. */
+.toast-region:not(:empty) {
+  margin-top: 0.5rem;
+}
+
+.new-messages {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 2.25rem;
+  padding: 0.375rem 1rem;
+  border-radius: 999px;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.2);
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+/* Toast: a short message just above the composer, on every screen size. */
+.toast {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.2);
+  animation: toast-in 150ms ease-out;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.375rem);
+  }
+}
+
+/* Composer bar at the bottom, above the home indicator on phones. */
+.composer {
+  padding: 0.75rem max(1rem, env(safe-area-inset-right)) calc(0.75rem + env(safe-area-inset-bottom))
+    max(1rem, env(safe-area-inset-left));
+  border-top: 1px solid var(--divider);
+  background: var(--surface);
+}
+
+.composer-inner {
+  display: grid;
+  gap: 0.5rem;
+  max-width: 48rem;
+  margin: 0 auto;
+}
+
+.composer-note {
+  font-size: 0.875rem;
+}
+
+.composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+/* A pill that grows with its text to about 5 lines, then scrolls. */
+.composer textarea {
+  flex: 1;
+  min-width: 0;
+  max-height: calc(7.5em + 1.25rem + 2px);
+  padding: 0.625rem 1rem;
+  border-radius: 1.375rem;
+  overflow-y: auto;
+  resize: none;
+}
+
+.send-button {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border-radius: 50%;
+}
+
+/* People in the room: a side panel from 900px wide, a panel over the messages when narrower. */
+.participants {
+  box-sizing: border-box;
+  flex-shrink: 0;
+  width: 16rem;
+  padding: 1rem;
+  overflow-y: auto;
+  border-left: 1px solid var(--divider);
+  background: var(--surface);
+}
+
+.participants-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 2.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.participants h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+/* The participant count: a small pill after the heading. */
+.count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  box-sizing: border-box;
+  padding: 0 0.375rem;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.participants ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.participants li {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.375rem 0;
+}
+
+.participant-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Initials avatar: chip with text colour for other people, accent for you. */
+.avatar {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--chip);
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.avatar.you {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+@media (min-width: 900px) {
+  .participants-button,
+  .panel-close,
+  .panel-backdrop {
+    display: none !important;
+  }
+}
+
+@media (max-width: 899.98px) {
+  .participants {
+    display: none;
+  }
+
+  .panel-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    background: rgb(0 0 0 / 0.4);
+  }
+
+  .participants.open {
+    position: absolute;
+    inset: 0 0 0 auto;
+    z-index: 3;
+    display: block;
+    width: min(18rem, 85%);
+    box-shadow: -8px 0 24px rgb(0 0 0 / 0.2);
+  }
+}
+
+/* Below 900px, where the participant button appears, the room header keeps the logo mark and
+   icon-only buttons. Their names stay for screen readers. */
+@media (max-width: 899.98px) {
+  .room .logo-text,
+  .room .button-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .room .header-actions {
+    gap: 0.375rem;
+  }
+
+  .room .header-actions button {
+    justify-content: center;
+    min-width: 2.5rem;
+    padding: 0 0.5rem;
+  }
+
+  .room-title {
+    padding-left: 0.625rem;
+  }
+
+  .room .app-header {
+    gap: 0.625rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

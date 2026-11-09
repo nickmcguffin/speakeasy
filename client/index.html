@@ -2,7 +2,24 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+    <script>
+      // Applies a saved theme before the first paint. Without one, the CSS follows the system setting.
+      try {
+        const theme = localStorage.getItem("speakeasy:theme");
+        if (theme === "light" || theme === "dark") {
+          document.documentElement.dataset.theme = theme;
+        }
+      } catch {}
+    </script>
+    <!-- The Latin font file starts loading with the page, so text does not change font after the first paint. -->
+    <link
+      rel="preload"
+      href="../node_modules/@fontsource-variable/instrument-sans/files/instrument-sans-latin-wght-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Speakeasy</title>
   </head>

@@ -1,5 +1,6 @@
 import { type SubmitEvent, useId, useState } from "react";
 import type { CreateRoomRequest, CreateRoomResponse } from "../shared/types.js";
+import { AppHeader } from "./AppHeader";
 import { encrypt, generateKey, importKey } from "./crypto";
 
 type CreateStatus = "idle" | "creating" | "failed";
@@ -53,35 +54,37 @@ export function HomePage({ onRoomCreated }: { onRoomCreated: (room: CreatedRoom)
   };
 
   return (
-    <main className="page">
-      <h1>Speakeasy</h1>
-      <p className="lead">Private rooms for quick conversations.</p>
-      <p className="lead muted">Messages are encrypted in your browser.</p>
-      <form className="form" onSubmit={handleSubmit}>
-        <label htmlFor={roomNameInputId}>Room name (optional)</label>
-        <input
-          id={roomNameInputId}
-          value={roomName}
-          onChange={(event) => setRoomName(event.target.value)}
-          placeholder="Friday plans"
-          autoComplete="off"
-          aria-invalid={nameError !== null}
-          aria-describedby={nameError ? nameErrorId : undefined}
-        />
-        {nameError && (
-          <p id={nameErrorId} role="alert" className="error">
-            {nameError}
-          </p>
-        )}
-        <button type="submit" disabled={status === "creating"}>
-          {status === "creating" ? "Creating a room..." : "Create a room"}
-        </button>
-        {status === "failed" && (
-          <p role="alert" className="error">
-            Could not create a room. Check your connection and try again.
-          </p>
-        )}
-      </form>
-    </main>
+    <>
+      <AppHeader />
+      <main className="page">
+        <h1>Private rooms for quick conversations</h1>
+        <p className="lead muted">Messages are encrypted in your browser.</p>
+        <form className="form" onSubmit={handleSubmit}>
+          <label htmlFor={roomNameInputId}>Room name (optional)</label>
+          <input
+            id={roomNameInputId}
+            value={roomName}
+            onChange={(event) => setRoomName(event.target.value)}
+            placeholder="Friday plans"
+            autoComplete="off"
+            aria-invalid={nameError !== null}
+            aria-describedby={nameError ? nameErrorId : undefined}
+          />
+          {nameError && (
+            <p id={nameErrorId} role="alert" className="error">
+              {nameError}
+            </p>
+          )}
+          <button type="submit" disabled={status === "creating"}>
+            {status === "creating" ? "Creating a room..." : "Create a room"}
+          </button>
+          {status === "failed" && (
+            <p role="alert" className="error">
+              Could not create a room. Check your connection and try again.
+            </p>
+          )}
+        </form>
+      </main>
+    </>
   );
 }
