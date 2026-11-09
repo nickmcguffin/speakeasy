@@ -28,7 +28,7 @@ export type RoomState = {
   pending: PendingMessage[]; // in send order
   participants: Participant[]; // the last room:presence list, kept while disconnected
   presenceKey: string | null; // this browser's entry, from the latest join ack
-  linkSaved: boolean; // true after the link was copied in this room screen
+  linkSaved: boolean; // true after the link was copied or shared. Kept in the history entry too
   historyLoaded: boolean; // true after the first join ack, which carries the history
 };
 

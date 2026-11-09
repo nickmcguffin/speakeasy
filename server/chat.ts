@@ -30,7 +30,7 @@ type RecordRow = {
   client_id: string | null;
   room_id: string;
   author_name: string;
-  author_key: string | null; // null for rows from before step 7e
+  author_key: string | null; // null for rows from before author keys
   ciphertext: string | null;
   iv: string | null;
   created_at: Date;
