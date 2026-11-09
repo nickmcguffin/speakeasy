@@ -12,17 +12,17 @@ export function StateScreen({ title, message, action }: StateScreenProps) {
   return (
     <>
       <AppHeader />
-      <main className="page">
-      <h1>{title}</h1>
-      {/* An alert, so a screen reader also hears it when Try again fails again. */}
-      <p className="lead" role="alert">
-        {message}
-      </p>
-      {action && (
-        <button type="button" onClick={action.onClick}>
-          {action.label}
-        </button>
-      )}
+      <main className="page state-screen">
+        <h1>{title}</h1>
+        {/* An alert, so a screen reader also hears it when Try again fails again. */}
+        <p className="lead" role="alert">
+          {message}
+        </p>
+        {action && (
+          <button type="button" onClick={action.onClick}>
+            {action.label}
+          </button>
+        )}
       </main>
     </>
   );

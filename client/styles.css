@@ -36,6 +36,11 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+h1,
+h2 {
+  text-wrap: balance;
+}
+
 h1 {
   margin: 0 0 0.75rem;
   font-size: clamp(1.75rem, 1.4rem + 1.5vw, 2.25rem);
@@ -155,6 +160,17 @@ textarea:hover {
 
 .page > :is(form, button) {
   margin-top: 2rem;
+}
+
+/* State screens centre the title, the text and the action. The home page and the name prompt stay
+   left-aligned. */
+.state-screen {
+  text-align: center;
+}
+
+.state-screen > button {
+  display: block;
+  margin-inline: auto;
 }
 
 .form {
