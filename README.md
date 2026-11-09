@@ -79,7 +79,8 @@ This is end-to-end encryption with one shared key per room, the same pattern as 
 - A leaked link gives access to the room and its full history. Links and keys cannot be changed.
 - The full link and the room name stay in the browser history of each device that opens the room.
 - Display names and timestamps are not encrypted, so the server knows who spoke and when.
-- Your own messages are recognised by display name. Two people with the same name each see the other's messages on their own side.
+- Join and leave events are stored in plain text, with the display name and the time, so the server knows when each person came and went.
+- A server restart while someone is in a room can lose their "left" event: the timer for it lives in memory.
 - The server can only limit the size of the encrypted data, not check the message text.
 - No moderation, editing or deleting of messages.
 - After a very long disconnect, only the newest 200 missed messages load.

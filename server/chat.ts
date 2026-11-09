@@ -5,6 +5,8 @@ import type {
   EncryptedMessage,
   ErrorCode,
   Participant,
+  RoomEvent,
+  RoomRecord,
   ServerToClientEvents,
   SocketData,
 } from "../shared/types.js";
@@ -20,33 +22,77 @@ export type ChatServer = Server<
 >;
 type ChatSocket = Socket<ClientToServerEvents, ServerToClientEvents, DefaultEventsMap, Partial<SocketData>>;
 
-type MessageRow = {
+// A message or a join or leave event. The CHECK constraint in schema.sql guarantees that a
+// message has client_id, ciphertext and iv, and that an event has none of them.
+type RecordRow = {
   id: string; // bigint arrives as a string from pg
-  client_id: string;
+  kind: "message" | "join" | "leave";
+  client_id: string | null;
   room_id: string;
   author_name: string;
-  ciphertext: string;
-  iv: string;
+  author_key: string | null; // null for rows from before step 7e
+  ciphertext: string | null;
+  iv: string | null;
   created_at: Date;
 };
 
-const messageColumns = "id, client_id, room_id, author_name, ciphertext, iv, created_at";
+const recordColumns = "id, kind, client_id, room_id, author_name, author_key, ciphertext, iv, created_at";
 const recentLimit = 50;
 const catchUpLimit = 200;
+// A browser's last connection must stay gone this long before its "left" event, so a refresh
+// or a short network switch makes no events.
+const leaveDelayMs = 5000;
 
 // Increases with every join, so the presence list is in join order.
 let joinCount = 0;
 
-function toMessage(row: MessageRow): EncryptedMessage {
+// Pending "left" events, keyed by room and presenceKey.
+const leaveTimers = new Map<string, NodeJS.Timeout>();
+// Event decisions for one browser in one room run one at a time, so two tabs joining together,
+// or a join while the leave timer fires, cannot store two events. One server instance only.
+const eventQueues = new Map<string, Promise<unknown>>();
+
+function toMessage(row: RecordRow): EncryptedMessage {
   return {
+    kind: "message",
     id: Number(row.id),
-    clientId: row.client_id,
+    clientId: row.client_id as string,
     roomId: row.room_id,
     authorName: row.author_name,
-    ciphertext: row.ciphertext,
-    iv: row.iv,
+    authorKey: row.author_key,
+    ciphertext: row.ciphertext as string,
+    iv: row.iv as string,
     createdAt: row.created_at.toISOString(),
   };
+}
+
+function toEvent(row: RecordRow): RoomEvent {
+  return {
+    kind: row.kind === "leave" ? "leave" : "join",
+    id: Number(row.id),
+    roomId: row.room_id,
+    authorName: row.author_name,
+    authorKey: row.author_key,
+    createdAt: row.created_at.toISOString(),
+  };
+}
+
+function toRecord(row: RecordRow): RoomRecord {
+  return row.kind === "message" ? toMessage(row) : toEvent(row);
+}
+
+// Runs the task after any earlier task with the same key has finished.
+function inOrder<Result>(key: string, task: () => Promise<Result>): Promise<Result> {
+  const previous = eventQueues.get(key) ?? Promise.resolve();
+  const result = previous.then(task);
+  const tail = result.catch(() => {});
+  eventQueues.set(key, tail);
+  tail.then(() => {
+    if (eventQueues.get(key) === tail) {
+      eventQueues.delete(key);
+    }
+  });
+  return result;
 }
 
 // A client may emit without an ack function. Replying must never throw.
@@ -66,24 +112,91 @@ async function roomExists(roomId: string) {
   return result.rowCount === 1;
 }
 
-// Without since: the last 50. With since: the newest 200 after it, so the current conversation shows.
+// Messages and events together. Without since: the last 50. With since: the newest 200 after
+// it, so the current conversation shows.
 async function loadMessages(roomId: string, since: number | undefined) {
   const result =
     since === undefined
-      ? await pool.query<MessageRow>(
-          `SELECT * FROM (SELECT ${messageColumns} FROM messages WHERE room_id = $1 ORDER BY id DESC LIMIT $2) recent ORDER BY id`,
+      ? await pool.query<RecordRow>(
+          `SELECT * FROM (SELECT ${recordColumns} FROM messages WHERE room_id = $1 ORDER BY id DESC LIMIT $2) recent ORDER BY id`,
           [roomId, recentLimit],
         )
-      : await pool.query<MessageRow>(
-          `SELECT * FROM (SELECT ${messageColumns} FROM messages WHERE room_id = $1 AND id > $2 ORDER BY id DESC LIMIT $3) missed ORDER BY id`,
+      : await pool.query<RecordRow>(
+          `SELECT * FROM (SELECT ${recordColumns} FROM messages WHERE room_id = $1 AND id > $2 ORDER BY id DESC LIMIT $3) missed ORDER BY id`,
           [roomId, since, catchUpLimit],
         );
 
-  const messages: EncryptedMessage[] = [];
+  const records: RoomRecord[] = [];
   for (const row of result.rows) {
-    messages.push(toMessage(row));
+    records.push(toRecord(row));
   }
-  return messages;
+  return records;
+}
+
+// The last join or leave event of this browser in this room decides: a "joined" event only
+// when the last one is not a join, and a "left" event only when it is.
+const lastEventSql = `SELECT kind, author_name FROM messages
+  WHERE room_id = $1 AND author_key = $2 AND kind IN ('join', 'leave') ORDER BY id DESC LIMIT 1`;
+
+async function insertJoinEvent(roomId: string, authorKey: string, displayName: string) {
+  const result = await pool.query<RecordRow>(
+    `INSERT INTO messages (room_id, kind, author_key, author_name)
+     SELECT $1::uuid, 'join', $2::text, $3::text
+     WHERE (SELECT kind FROM (${lastEventSql}) last) IS DISTINCT FROM 'join'
+     RETURNING ${recordColumns}`,
+    [roomId, authorKey, displayName],
+  );
+  return result.rows[0] ? toEvent(result.rows[0]) : null;
+}
+
+// The "left" event keeps the name from the browser's "joined" event.
+async function insertLeaveEvent(roomId: string, authorKey: string) {
+  const result = await pool.query<RecordRow>(
+    `INSERT INTO messages (room_id, kind, author_key, author_name)
+     SELECT $1::uuid, 'leave', $2::text, last.author_name FROM (${lastEventSql}) last
+     WHERE last.kind = 'join'
+     RETURNING ${recordColumns}`,
+    [roomId, authorKey],
+  );
+  return result.rows[0] ? toEvent(result.rows[0]) : null;
+}
+
+async function browserIsInRoom(io: ChatServer, roomId: string, authorKey: string) {
+  for (const member of await io.in(roomId).fetchSockets()) {
+    if (member.data.presenceKey === authorKey) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Called when a socket has left a room (disconnect, joining another room, or a failed join).
+// If it was the browser's last connection there, a "left" event follows after leaveDelayMs,
+// unless the browser is back by then.
+async function afterSocketLeftRoom(io: ChatServer, roomId: string, authorKey: string) {
+  if (await browserIsInRoom(io, roomId, authorKey)) {
+    return;
+  }
+  const timerKey = `${roomId}:${authorKey}`;
+  clearTimeout(leaveTimers.get(timerKey));
+  const timer = setTimeout(() => {
+    leaveTimers.delete(timerKey);
+    inOrder(timerKey, async () => {
+      if (await browserIsInRoom(io, roomId, authorKey)) {
+        return null;
+      }
+      return insertLeaveEvent(roomId, authorKey);
+    })
+      .then((event) => {
+        if (event) {
+          io.to(roomId).emit("message:new", event);
+        }
+      })
+      .catch((error: Error) => {
+        console.error(`leave event failed in room ${roomId}: ${error.message}`);
+      });
+  }, leaveDelayMs);
+  leaveTimers.set(timerKey, timer);
 }
 
 // The browser's ID in this room. The token itself never leaves the server.
@@ -138,32 +251,48 @@ function handleJoin(io: ChatServer, socket: ChatSocket) {
       }
 
       const previousRoomId = socket.data.roomId;
-      if (previousRoomId && previousRoomId !== join.roomId) {
+      const previousKey = socket.data.presenceKey;
+      if (previousRoomId && previousKey && previousRoomId !== join.roomId) {
         await socket.leave(previousRoomId);
         await broadcastPresence(io, previousRoomId);
+        await afterSocketLeftRoom(io, previousRoomId, previousKey);
       }
 
       // Join before loading, so a message sent in between is broadcast to this socket.
       // A duplicate from that overlap is dropped by id on the client.
+      const authorKey = presenceKey(join.roomId, join.browserToken);
       await socket.join(join.roomId);
       joinCount += 1;
       socket.data.roomId = join.roomId;
       socket.data.displayName = join.displayName;
       socket.data.browserToken = join.browserToken;
+      socket.data.presenceKey = authorKey;
       socket.data.joinOrder = joinCount;
       console.log(`socket ${socket.id} joined room ${join.roomId}`);
 
-      let messages: EncryptedMessage[];
+      let messages: RoomRecord[];
       try {
+        // The browser is back, so a pending "left" event is cancelled. A "joined" event is
+        // stored before the history loads, so the joiner gets it in the history.
+        const timerKey = `${join.roomId}:${authorKey}`;
+        const joinEvent = await inOrder(timerKey, async () => {
+          clearTimeout(leaveTimers.get(timerKey));
+          leaveTimers.delete(timerKey);
+          return insertJoinEvent(join.roomId, authorKey, join.displayName);
+        });
+        if (joinEvent) {
+          socket.to(join.roomId).emit("message:new", joinEvent);
+        }
         messages = await loadMessages(join.roomId, join.since);
       } catch (error) {
         // Leave before the error ack, so a failed join is not counted in presence and cannot send.
         await socket.leave(join.roomId);
         socket.data = {};
+        await afterSocketLeftRoom(io, join.roomId, authorKey);
         throw error;
       }
 
-      reply({ ok: true, presenceKey: presenceKey(join.roomId, join.browserToken), messages });
+      reply({ ok: true, presenceKey: authorKey, messages });
       await broadcastPresence(io, join.roomId);
     } catch (error) {
       console.error(`room:join failed for socket ${socket.id}: ${(error as Error).message}`);
@@ -176,8 +305,8 @@ function handleSend(socket: ChatSocket) {
   socket.on("message:send", async (payload, ack) => {
     const reply = safeAck<Parameters<typeof ack>[0]>(ack);
     try {
-      const { roomId, displayName } = socket.data;
-      if (!roomId || !displayName) {
+      const { roomId, displayName, presenceKey: authorKey } = socket.data;
+      if (!roomId || !displayName || !authorKey) {
         reply(failure("NOT_JOINED"));
         return;
       }
@@ -188,13 +317,13 @@ function handleSend(socket: ChatSocket) {
         return;
       }
 
-      // The author is the joined name on socket.data, never a value from the payload.
-      const inserted = await pool.query<MessageRow>(
-        `INSERT INTO messages (room_id, client_id, author_name, ciphertext, iv)
-         VALUES ($1, $2, $3, $4, $5)
+      // The author name and key come from socket.data, never from the payload.
+      const inserted = await pool.query<RecordRow>(
+        `INSERT INTO messages (room_id, kind, client_id, author_name, author_key, ciphertext, iv)
+         VALUES ($1, 'message', $2, $3, $4, $5, $6)
          ON CONFLICT (room_id, client_id) DO NOTHING
-         RETURNING ${messageColumns}`,
-        [roomId, send.clientId, displayName, send.ciphertext, send.iv],
+         RETURNING ${recordColumns}`,
+        [roomId, send.clientId, displayName, authorKey, send.ciphertext, send.iv],
       );
 
       const insertedRow = inserted.rows[0];
@@ -206,8 +335,8 @@ function handleSend(socket: ChatSocket) {
       }
 
       // A retry of a message that is already stored: return it, and do not broadcast it again.
-      const existing = await pool.query<MessageRow>(
-        `SELECT ${messageColumns} FROM messages WHERE room_id = $1 AND client_id = $2`,
+      const existing = await pool.query<RecordRow>(
+        `SELECT ${recordColumns} FROM messages WHERE room_id = $1 AND client_id = $2`,
         [roomId, send.clientId],
       );
       reply({ ok: true, message: toMessage(existing.rows[0]) });
@@ -222,12 +351,13 @@ function handleSend(socket: ChatSocket) {
 // that remain. socket.data still holds the room it was in.
 function handleDisconnect(io: ChatServer, socket: ChatSocket) {
   socket.on("disconnect", async () => {
-    const { roomId } = socket.data;
-    if (!roomId) {
+    const { roomId, presenceKey: authorKey } = socket.data;
+    if (!roomId || !authorKey) {
       return;
     }
     try {
       await broadcastPresence(io, roomId);
+      await afterSocketLeftRoom(io, roomId, authorKey);
     } catch (error) {
       console.error(`presence after disconnect failed for socket ${socket.id}: ${(error as Error).message}`);
     }
