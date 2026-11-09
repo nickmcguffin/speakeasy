@@ -258,14 +258,17 @@ One `useReducer` per room screen. No global state library.
 ```ts
 type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected";
 type MessageStatus = "sending" | "sent" | "failed";
+type SendFailure = "network" | "server" | "invalid";  // no ack in time, SERVER_ERROR, INVALID_INPUT
 
 type RoomState = {
   connection: ConnectionState;
   messages: ChatMessage[];                  // confirmed and decrypted, ordered by id
   pending: { clientId: string; body: string; status: MessageStatus;
+             queuedAt: string; failure?: SendFailure;
              ciphertext?: string; iv?: string }[];
   participants: Participant[];              // the last room:presence list
   presenceKey: string | null;               // this browser's entry, from the latest join ack
+  linkSaved: boolean;                       // true after a successful "Copy link"
 };
 ```
 
@@ -283,7 +286,11 @@ type RoomState = {
 - Message text is rendered as React text with `white-space: pre-wrap`, never as HTML.
 - Socket.IO buffers emits while disconnected by default. The disabled button prevents most of this, and the `clientId` makes any late delivery safe.
 - Each `room:presence` replaces the whole participant list. The join ack sets `presenceKey` (and `connected`) in a separate action, so the two can arrive in either order. "(you)" shows on the entry whose `presenceKey` matches.
-- `RoomPage` gets the browser token from local storage (`speakeasy:browserToken`), or makes and stores one, and passes it to the chat component. Storage access is wrapped in try/catch, with an in-memory token as the fallback. Local storage holds only the display name and this token. Session storage is not used.
+- `RoomPage` gets the browser token from local storage (`speakeasy:browserToken`), or makes and stores one, and passes it to the chat component. Storage access is wrapped in try/catch, with an in-memory token as the fallback.
+- Local storage holds only the display name, the browser token and the theme choice (`speakeasy:theme`, only "light" or "dark", absent until the user uses the toggle). Session storage is not used.
+- `ChatRoom` owns the socket and the reducer, and renders `RoomHeader`, `MessageList`, `Composer` and `ParticipantPanel`. A pending message keeps its `queuedAt` time until the server's time arrives, and its `failure` decides the text and whether Retry shows.
+- `linkSaved` becomes true after a successful copy of the link, for the leave confirmation (not built yet).
+- Your own messages are the ones whose author name is your display name, so they also include messages from another person with the same name (see Known limits in the README).
 - On a disconnect the list is kept as it was, with "(you)" still on the old entry, until the first `room:presence` after the rejoin. The room screen shows the count and the names, and nothing before the first list arrives.
 
 ## 7. Error handling
@@ -297,6 +304,7 @@ type RoomState = {
 | No Web Crypto (not a secure context) | "This browser cannot encrypt messages" screen on every route, with no requests to the API or socket |
 | Message fails to decrypt | Shown as "Unable to decrypt this message", other messages still show |
 | Invalid input | Ack with `INVALID_INPUT`, message marked failed with the reason and no retry, because a retry fails again |
+| Copy link fails (Clipboard API missing or refused) | A small panel under the header shows the full link in a focused, selected field to copy by hand. Escape or Close hides it |
 | Message over 2,000 characters | Rejected in the client with an inline message. The draft is kept and nothing is sent |
 | Join fails (`ROOM_NOT_FOUND`, `SERVER_ERROR` or no ack in time) | "Room not found" or "Could not join the room. Reload the page to try again." |
 | Database error | Ack with `SERVER_ERROR`, message marked failed with retry |
@@ -357,7 +365,7 @@ type RoomState = {
 Go from "Create a room" to chatting with a friend in less than 30 seconds. The one memorable element is the share moment: the link is shown with the key part highlighted, because the key in the link is what makes Speakeasy private.
 
 ### Colour tokens
-Light and dark mode follow the system setting.
+Light and dark mode follow the system setting until the user chooses one with the theme toggle.
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
@@ -369,6 +377,7 @@ Light and dark mode follow the system setting.
 | `field-border` | `#73897D` | `#5F7468` | Edge of input fields (3:1 or more) |
 | `accent` | `#1F5C45` | `#1E5A43` | Main buttons, your messages |
 | `on-accent` | `#FFFFFF` | `#E9F2EC` | Text and icons on accent |
+| `on-accent-muted` | `#C2D9CD` | `#BCD3C7` | Times and labels on your own messages (`muted` fails on `accent`) |
 | `focus` | `#1F5C45` | `#7CC9A1` | Focus rings, links |
 | `danger` | `#B42318` | `#F28B82` | Failed messages, errors |
 
@@ -392,7 +401,8 @@ All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
 - Theme toggle in the header on every screen, before "Leave room" in the room. The first visit follows the system setting. The button switches between light and dark and saves the choice in local storage (`speakeasy:theme`). An inline script in index.html applies it before the first paint, so the page never shows the wrong theme first.
 
 ### Styles
-- One stylesheet, `client/styles.css`, with the colour tokens as CSS custom properties. Dark values apply under `prefers-color-scheme: dark`. No CSS framework.
+- One stylesheet, `client/styles.css`, with the colour tokens as CSS custom properties. Each token is a `light-dark()` pair, and `color-scheme` on `:root` picks the side: `light dark` follows the system setting, and `data-theme="light"` or `"dark"` on `<html>` (set by the toggle and by the script in index.html) fixes it. No CSS framework.
+- Icons come from `lucide-react`. Buttons that show only an icon have an `aria-label`.
 - Base styles for the body, headings, buttons, text fields, focus and errors. Buttons are primary (`accent`) by default, and `secondary` buttons have a `field-border` outline. Text fields have a `field-border` edge, which turns `danger` while the field is invalid. On `:focus-visible`, buttons and links show a 2px `focus` outline with a 2px offset. A text field shows focus on its own border instead: the border turns `focus` and an inset 1px shadow makes it look 2px thick, so the field keeps its size and there is no ring outside it. Inline errors use `danger`.
 - The home page, the name prompt and the state screens share one column (`.page`): about 28rem wide, centred horizontally, with left-aligned text. It starts at a fixed distance from the top (`min(18vh, 160px)`), not centred vertically, so the content does not move when an error message appears.
 - The favicon (`client/public/favicon.svg`) is a speech bubble with a keyhole in `accent`. A `prefers-color-scheme: dark` query inside the SVG switches it to the dark `focus` green (`#7CC9A1`), so it stays clear in a dark tab bar.
@@ -401,15 +411,28 @@ All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
 - Message field: pill shape, `field-border` edge, and the same focus style as other text fields (the border turns `focus`, no ring outside). It grows to about 5 lines, then scrolls.
 - Send button: round, `accent`, send icon, `aria-label="Send"`.
 - One state screen component (`StateScreen`: title, one or two sentences, optional action button) for: incomplete link, room not found, page not found, cannot encrypt, could not load (with Try again). The text says what happened and what to do.
-- Connection status: small dot with text. Colour is never the only signal.
+- Connection status: small dot with text, under the room name. Filled `focus` when connected, filled `danger` when disconnected, an outline while connecting or reconnecting. The text is always there.
+- Room header buttons: the participant button only below 900px, then "Copy link", the theme toggle and "Leave room". Below 640px they show only their icons (the names stay for screen readers) and the logo shows only its mark. A long room name is cut with an ellipsis.
+- Copy link: copies the full link with the Clipboard API. The button says "Copied" for 2 seconds, and a polite live region says "Link copied". If the copy fails, the fallback panel in section 7 shows.
+- Participant panel: below 900px it opens over the messages with focus on its close button. Escape or the close button closes it and focus returns to the participant button.
+- Composer: the message field and the round send button. When not connected, the send button is disabled and a `muted` line above the field says why ("Connecting...", "Reconnecting..." or "Disconnected. Reload the page to reconnect."). The 2,000-character error shows above the field in `danger`.
+- Empty room: "No messages yet." in `muted` (the share panel replaces it later).
 
 ### Message states
 - Sending: a "Sending..." label in `muted` next to the time. The message text keeps full contrast (no lower opacity).
-- Failed: `danger` text with the reason. Retry for network and server errors. No Retry for `INVALID_INPUT`.
+- Failed: `danger` text with the reason under the message ("Failed to send. Check your connection.", "... The server had a problem." or "... The server did not accept this message."). Retry for network and server errors. No Retry for `INVALID_INPUT`.
+- Decrypt failure: "Unable to decrypt this message" in `muted` italics.
+- On your own messages the time and labels use `on-accent-muted`.
+- Long words and links wrap anywhere (`overflow-wrap: anywhere`), and line breaks are kept.
+
+### Scrolling
+- The list opens at the bottom. A new message keeps it at the bottom when it was already there (within 48px).
+- When the user has scrolled up, new messages do not move the list. A "New messages" button appears and scrolls to the bottom.
+- Your own new message always scrolls to the bottom.
 - Wrong key: if the history has messages and none decrypt, a warning banner and sending is disabled.
 
 ### Motion
-One moment only: a short slide-in for new messages. Controls also change colour with a 150 ms transition on hover. No motion at all when the user prefers reduced motion.
+One moment only: a short slide-in (180 ms) for new messages. History and catch-up messages from a join do not slide in. Controls also change colour with a 150 ms transition on hover. No motion at all when the user prefers reduced motion.
 
 ### Accessibility and mobile
 - Visible focus rings on all controls. Labels use `htmlFor`.
