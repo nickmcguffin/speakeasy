@@ -4,9 +4,12 @@ import { ChatRoom } from "./ChatRoom";
 import { decrypt, importKey, type RoomKey } from "./crypto";
 import { getBrowserToken } from "./browserToken";
 import { NamePrompt, readStoredName } from "./NamePrompt";
+import { StateScreen } from "./StateScreen";
 
 type RoomStatus = "loading" | "incomplete-link" | "found" | "not-found" | "failed";
 type LoadedRoom = { status: RoomStatus; roomKey: RoomKey | null; roomName: string | null };
+
+const loadingRoom: LoadedRoom = { status: "loading", roomKey: null, roomName: null };
 type FetchedRoom = { status: RoomStatus; room: RoomResponse | null };
 
 const appTitle = "Speakeasy";
@@ -58,7 +61,9 @@ type RoomPageProps = { roomId: string; encodedKey: string };
 
 export function RoomPage({ roomId, encodedKey }: RoomPageProps) {
   // The key lives only in this state and in the URL. It is never stored or sent.
-  const [room, setRoom] = useState<LoadedRoom>({ status: "loading", roomKey: null, roomName: null });
+  const [room, setRoom] = useState(loadingRoom);
+  // Try again increases this, which runs the room lookup again.
+  const [attempt, setAttempt] = useState(0);
   const [displayName, setDisplayName] = useState(readStoredName);
   const [browserToken] = useState(getBrowserToken);
 
@@ -72,7 +77,7 @@ export function RoomPage({ roomId, encodedKey }: RoomPageProps) {
     return () => {
       isCurrent = false;
     };
-  }, [roomId, encodedKey]);
+  }, [roomId, encodedKey, attempt]);
 
   // The tab title shows the room name, and goes back to the app name when the room closes.
   useEffect(() => {
@@ -85,25 +90,48 @@ export function RoomPage({ roomId, encodedKey }: RoomPageProps) {
     };
   }, [room]);
 
+  const handleTryAgain = () => {
+    setRoom(loadingRoom);
+    setAttempt((count) => count + 1);
+  };
+
   if (room.status === "loading") {
-    return <p>Loading room...</p>;
-  }
-  if (room.status === "incomplete-link") {
     return (
-      <main>
-        <h1>This link is incomplete</h1>
-        <p>The key that unlocks the messages is missing or damaged. Ask the person who shared it for the full link.</p>
+      <main className="page">
+        <p className="lead muted" role="status">
+          Loading room...
+        </p>
       </main>
     );
   }
+  if (room.status === "incomplete-link") {
+    return (
+      <StateScreen
+        title="This link is incomplete"
+        message="The key that unlocks the messages is missing or damaged. Ask the person who shared it for the full link."
+      />
+    );
+  }
   if (room.status === "not-found") {
-    return <p>Room not found</p>;
+    return (
+      <StateScreen
+        title="Room not found"
+        message="No room matches this link. Check that you have the whole link, or ask the person who shared it to send it again."
+      />
+    );
   }
   if (room.status === "failed" || !room.roomKey) {
-    return <p role="alert">Could not load the room. Reload the page to try again.</p>;
+    return (
+      <StateScreen
+        title="Could not load the room"
+        message="The server did not answer. Check your connection and try again."
+        action={{ label: "Try again", onClick: handleTryAgain }}
+      />
+    );
   }
   return (
-    <main>
+    // The chat screen is styled in a later step. Until then only the name prompt uses the column.
+    <main className={displayName ? undefined : "page"}>
       <h1>{room.roomName ?? untitledRoom}</h1>
       {displayName ? (
         <ChatRoom roomId={roomId} displayName={displayName} roomKey={room.roomKey} browserToken={browserToken} />

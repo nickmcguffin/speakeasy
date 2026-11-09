@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { isEncryptionAvailable } from "./crypto";
 import { type CreatedRoom, HomePage } from "./HomePage";
 import { RoomPage } from "./RoomPage";
+import { StateScreen } from "./StateScreen";
 
 const roomPathPattern = /^\/r\/([^/]+)\/?$/;
 
@@ -33,10 +34,10 @@ export function App() {
   // Checked before both screens: a room cannot be created or read without Web Crypto.
   if (!isEncryptionAvailable()) {
     return (
-      <main>
-        <h1>This browser cannot encrypt messages</h1>
-        <p>Encryption needs a secure connection. Open the link with https:// and try again.</p>
-      </main>
+      <StateScreen
+        title="This browser cannot encrypt messages"
+        message="Encryption needs a secure connection. Open the link with https:// and try again."
+      />
     );
   }
 
@@ -47,5 +48,18 @@ export function App() {
     // A new room or a new key starts a fresh room screen and connection.
     return <RoomPage key={`${roomId}#${encodedKey}`} roomId={roomId} encodedKey={encodedKey} />;
   }
-  return <HomePage onRoomCreated={handleRoomCreated} />;
+  if (current.pathname === "/") {
+    return <HomePage onRoomCreated={handleRoomCreated} />;
+  }
+  return (
+    <StateScreen
+      title="Page not found"
+      message={
+        <>
+          This address does not match a page in Speakeasy. Check the link, or go to the{" "}
+          <a href="/">home page</a> to create a room.
+        </>
+      }
+    />
+  );
 }

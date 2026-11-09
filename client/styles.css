@@ -1,0 +1,182 @@
+/* Tokens from DESIGN.md section 12. Dark mode follows the system setting. */
+:root {
+  color-scheme: light dark;
+  --bg: #f3f5f3;
+  --surface: #ffffff;
+  --divider: #e1e7e3;
+  --text: #17201b;
+  --muted: #5c6660;
+  --field-border: #73897d;
+  --accent: #1f5c45;
+  --on-accent: #ffffff;
+  --focus: #1f5c45;
+  --danger: #b42318;
+  --font: "Instrument Sans Variable", system-ui, sans-serif;
+  --radius: 0.625rem;
+  --transition: 150ms ease;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121815;
+    --surface: #1b231f;
+    --divider: #2b3530;
+    --text: #e6ede8;
+    --muted: #9aa59f;
+    --field-border: #5f7468;
+    --accent: #1e5a43;
+    --on-accent: #e9f2ec;
+    --focus: #7cc9a1;
+    --danger: #f28b82;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 1rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1 {
+  margin: 0 0 0.75rem;
+  font-size: clamp(1.75rem, 1.4rem + 1.5vw, 2.25rem);
+  font-weight: 650;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+}
+
+p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+a {
+  color: var(--focus);
+  text-underline-offset: 0.15em;
+}
+
+label {
+  font-weight: 550;
+}
+
+button {
+  min-height: 2.75rem;
+  padding: 0.625rem 1.125rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--on-accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--transition), border-color var(--transition), color var(--transition);
+}
+
+button:hover {
+  background: color-mix(in srgb, var(--accent) 82%, black);
+}
+
+button.secondary {
+  border-color: var(--field-border);
+  background: transparent;
+  color: var(--text);
+}
+
+button.secondary:hover {
+  background: var(--surface);
+}
+
+button:disabled {
+  border-color: var(--divider);
+  background: var(--divider);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+input,
+textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+input:hover,
+textarea:hover {
+  border-color: var(--muted);
+}
+
+:is(input, textarea)[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+/* Fields show focus on their own border, 2px thick with the inset shadow, so they keep their size. */
+:is(input, textarea):focus-visible {
+  outline: none;
+  border-color: var(--focus);
+  box-shadow: inset 0 0 0 1px var(--focus);
+}
+
+::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.error {
+  color: var(--danger);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.lead {
+  font-size: 1.125rem;
+}
+
+/* One narrow column for the home page, the name prompt and the state screens: centred, with
+   left-aligned text, and a fixed distance from the top, so an error below does not move it. */
+.page {
+  max-width: 28rem;
+  margin-inline: auto;
+  padding: min(18vh, 160px) 1.25rem 3rem;
+}
+
+.page > :is(form, button) {
+  margin-top: 2rem;
+}
+
+.form {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.form button {
+  justify-self: start;
+  margin-top: 0.75rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
