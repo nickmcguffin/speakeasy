@@ -13,17 +13,21 @@ This document describes the design for the MVP in the README. It covers only wha
 - Rooms and messages survive a server restart.
 - Unknown room IDs and links without a key show a clear error.
 - The UI shows connection state and per-message state (sending, sent, failed, retry).
+- An optional room name, encrypted like a message.
+- The room shows who is connected, and join and leave events show in the conversation.
+- Light and dark themes, with a toggle.
 
 ### Non-functional
 - **Scale:** demo traffic. Tens of concurrent users, a few messages per second at most.
 - **Latency:** messages should feel instant. Optimistic UI hides network and encryption time for the sender.
-- **Cost:** $0 hosting.
-- **Availability:** best effort. One instance. A free-tier cold start of about a minute is accepted and documented.
+- **Cost:** low. A paid Render instance during the review period, which can go back to Render's free tier later.
+- **Availability:** best effort. One instance. The paid instance never spins down. On the free tier, a cold start of about a minute after a quiet period would come back (see section 11).
 - **Security:** rooms are protected by an unguessable link. Message text is encrypted in the browser and the server never sees the key. Input is validated on the server. Message text is never rendered as HTML.
 
 ### Constraints
 - One developer, 20-hour time box, due Friday 13 November 2026.
 - TypeScript, Node, Express 5, Socket.IO, React with Vite, Postgres on Neon, Render.
+- Vitest and Playwright (with axe) for the tests, and GitHub Actions for CI.
 
 ## 2. High-level design
 
@@ -77,7 +81,7 @@ The server serves the built client from `client/dist` whenever that folder exist
 2. The room name is optional. The client trims it and rejects more than 60 characters with an inline message, keeping the text. If a name is left, the client encrypts it with the new key exactly like a message, with its own random 12-byte IV.
 3. Client sends `POST /api/rooms` with `{ nameCiphertext, nameIv }`, or with no body when there is no name. The key and the plain name are never in the request.
 4. Server validates the body, makes an ID with `crypto.randomUUID()`, inserts the ID and the name columns into `rooms`, and returns `{ roomId }`.
-5. Client navigates to `/r/:roomId#<key>` with `history.pushState` and shows the copy-link action. The copied link always includes the fragment.
+5. Client navigates to `/r/:roomId#<key>` with `history.pushState` and shows the share panel with the full link. The copied link always includes the fragment.
 
 ### Join a room
 1. Client reads the key from `location.hash` and imports it with `crypto.subtle.importKey` (AES-GCM, not extractable, encrypt and decrypt only). The key must be exactly the 43 base64url characters that `generateKey` makes: 32 bytes, no padding, no `+` or `/`, no whitespace. If the key is missing or invalid, the client shows the "incomplete link" screen and stops, with no room lookup and no socket. Changing only the fragment in the address bar does not reload the page, so the client listens for `hashchange` and starts a fresh room screen with the new key.
@@ -300,7 +304,8 @@ type RoomState = {
              ciphertext?: string; iv?: string }[];
   participants: Participant[];              // the last room:presence list
   presenceKey: string | null;               // this browser's entry, from the latest join ack
-  linkSaved: boolean;                       // true after a successful "Copy link"
+  linkSaved: boolean;                       // true after the link was copied or shared
+  historyLoaded: boolean;                   // true after the first join ack
 };
 ```
 
@@ -320,7 +325,7 @@ type RoomState = {
 - Each `room:presence` replaces the whole participant list. The join ack sets `presenceKey` (and `connected`) in a separate action, so the two can arrive in either order. "(you)" shows on the entry whose `presenceKey` matches.
 - `RoomPage` gets the browser token from local storage (`speakeasy:browserToken`), or makes and stores one, and passes it to the chat component. Storage access is wrapped in try/catch, with an in-memory token as the fallback.
 - Local storage holds only the display name, the browser token and the theme choice (`speakeasy:theme`, only "light" or "dark", absent until the user uses the toggle). Session storage is not used.
-- `ChatRoom` owns the socket and the reducer, and renders `RoomHeader`, `MessageList`, `Composer` and `ParticipantPanel`. A pending message keeps its `queuedAt` time until the server's time arrives, and its `failure` decides the text and whether Retry shows.
+- `ChatRoom` owns the socket and the reducer, and renders `RoomHeader`, `MessageList` (with `SharePanel` and `Toast`), `Composer`, `ParticipantPanel` and `LeaveDialog`. A pending message keeps its `queuedAt` time until the server's time arrives, and its `failure` decides the text and whether Retry shows.
 - `linkSaved` becomes true after a successful copy (header, share panel or leave dialog) or share of the link.
 - **History entry state.** The tab's history entry for the room holds `{ createdHere, linkSaved }`. Creating a room pushes the room entry with `createdHere: true`, and a copy or share replaces it with `linkSaved: true`. It is not storage: it survives a refresh in the same tab and never reaches other tabs. A joiner's entry has neither, so a joiner never sees the leave dialog.
 - **Retries.** A room lookup or `room:join` that fails with a network error, `SERVER_ERROR` or no ack in time is tried again after 1, 2 and 4 seconds, then every 10 seconds (`client/retry.ts`). A join is also tried again at once on every socket connect. `ROOM_NOT_FOUND` is final.
@@ -352,7 +357,7 @@ type RoomState = {
 | Packet over 32 KB | Socket.IO closes the connection. The client reconnects and the message fails after its ack timeout |
 | Connection drop | Status shows reconnecting, send disabled, rejoin and backfill on reconnect |
 | Server restart | Same as connection drop. Data is safe in Postgres |
-| Free-tier spin-down | Render shows a loading page for about a minute. Documented in the README |
+| Free-tier spin-down | Not on the paid instance used during the review period. On the free tier, Render shows a loading page for about a minute. Documented in the README |
 
 ## 8. Security notes and gotchas
 
@@ -384,7 +389,7 @@ type RoomState = {
 | Missed messages | Rejoin with `since` | Socket.IO connection state recovery | Works across server restarts because it reads from Postgres. |
 | Sender echo | Ack to sender, broadcast to others | Broadcast to all, dedupe on client | No duplicate handling on the client. |
 | Retries | Idempotent `clientId` | No retries | Safe retry with one unique constraint. |
-| Storage | Postgres on Neon | SQLite, in-memory | Render free tier has no persistent disk. |
+| Storage | Postgres on Neon | SQLite, in-memory | Render's free tier has no persistent disk, and the app can go back to it. |
 | Routing | Manual, two routes | React Router | No dependency for two screens. |
 | Client state | `useReducer` | Redux, Zustand | One screen with local state. |
 
@@ -396,9 +401,12 @@ type RoomState = {
 - **Room settings:** expiry with a cleanup job (also limits exposure of a leaked link), participant limit, and a creator token to manage them.
 - **Room password:** derive the key from a password (PBKDF2) instead of putting it in the link, so a leaked link alone is not enough.
 - **Stronger encryption model:** key rotation, encrypted display names, and AES-GCM additional data that binds each ciphertext to its room, its type (name or message) and its `clientId`. Today someone with the room ID could post the stored name ciphertext, or an old message, as a new message, and it would decrypt.
-- **Identity:** accounts, then moderation (remove a person, rotate the link).
+- **Proof of key to join:** the client derives a token from the key, and the server allows a join only with that token. This stops people who have only the room ID.
+- **Identity:** accounts and invite-only rooms. Sign in with an email magic link, the creator invites people by email, and the server allows a join only for invited members, so a leaked link alone is not enough. Then moderation: remove a person and rotate the key, because a removed member still has the old key.
 - **Typing indicators:** from Socket.IO room membership, sent like presence.
-- **Cold starts:** a paid instance removes the spin-down delay.
+- **Messages:** read receipts, edit and delete, and file and image uploads.
+- **Tests:** Firefox and WebKit, phone widths, and the theme toggle in the accessibility check.
+- **Hosting:** the app runs on a paid Render instance during the review period, so it never spins down. It can go back to the free tier later, which brings back a cold start of about a minute after a quiet period.
 
 ## 12. Visual design
 
@@ -433,14 +441,14 @@ All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
 
 ### Layout
 - App header on every screen: 56px, `surface` with a `divider` bottom border. Left: the logo mark (the favicon's speech bubble with a keyhole) and "Speakeasy", a link to the home page. Right: content for the current screen.
-- Home: no header content on the right. One narrow column, centred, with left-aligned text: the heading "Private rooms for quick conversations", one line about encryption, the field "Room name (optional)", and "Create a room".
-- Room: the header holds the room name (or "Untitled room") with the connection status under it, then the participant button, "Copy link" and "Leave room", in that order. On mobile: the logo mark only, a shortened room name, and icon buttons with aria-labels. Below the header: the message list, then the composer bar fixed at the bottom.
+- Home: only the theme toggle on the right of the header. One narrow column, centred, with left-aligned text: the heading "Private rooms for quick conversations", one line about encryption, the field "Room name (optional)", and "Create a room".
+- Room: the header holds the room name (or "Untitled room") with the connection status under it, then the participant button, "Copy link", the theme toggle and "Leave room", in that order. On mobile: the logo mark only, a shortened room name, and icon buttons with aria-labels. Below the header: the message list, then the composer bar fixed at the bottom.
 - Room name: the room heading and the tab title show it, or "Untitled room".
 - Participant list: on desktop (900px and wider), a narrow side panel that is always visible, so the header has no participant button. On mobile, the participant button ("3") opens the list as a panel over the messages, with a backdrop.
 - Each participant has an initials avatar (accent for your own entry, `chip` for others) and the panel has a "Participants" heading with the count.
 - Share panel: at the top of the message list from the join ack while the room has no messages of kind `'message'` (events do not count, and a pending message of your own does). It shows the full link in monospace, wrapping anywhere, with the part after # in `text` on a `chip` fill (14.1:1 in light, 8.8:1 in dark), the line "The part after # is the key. It never leaves your browser." (so colour is not the only signal), "Copy link" (the same copy, tick and toast as the header button) and "Share" only where `navigator.share` exists. A completed share sets `linkSaved`; an `AbortError` (the user closed the share sheet) does not. After the first message, the panel goes away, and "Copy link" in the header is the way to share. It replaces "No messages yet.".
 - Messages: yours on the right in `accent`, other people's on the left in `surface` (with a `divider` edge in dark mode only). The name shows on the first message of each group of other people's messages, and the time once, on the last message of a group (see "Message groups").
-- Short conversations sit at the bottom of the list, next to the composer. The list has `margin-top: auto` inside the scrolling column, so a long list still scrolls normally.
+- Short conversations sit at the bottom of the list, next to the composer. The message log (the wrapper around the list) has `margin-top: auto` inside the scrolling column, so a long list still scrolls normally.
 - "Leave room" (secondary button, last in the header) closes the connection and goes to the home page. The room and its messages stay. The browser Back button returns to the room, because the full link is in the history.
 - Leaving (the "Leave room" button or the logo link) asks for confirmation only when this tab created the room and the link was not copied or shared (`createdHere` and `linkSaved` from the history entry, see section 6). The native `<dialog>`, opened with `showModal()`: title "Save the link before you leave?", text "You have not copied the link for this room. Without it, you cannot come back, and nobody can recover it.", and "Copy link and leave" (primary), "Leave anyway" and "Stay". Focus starts on "Copy link and leave" and stays in the dialog; Escape means "Stay", and Stay returns focus to the button or link that opened it. If the copy fails, the fallback panel shows and the user stays. The browser Back button and closing the tab are not intercepted.
 - Theme toggle in the header on every screen, before "Leave room" in the room. The first visit follows the system setting. The button switches between light and dark and saves the choice in local storage (`speakeasy:theme`). Other open tabs apply the change at once, from the `storage` event. An inline script in index.html applies it before the first paint, so the page never shows the wrong theme first.
@@ -495,9 +503,10 @@ All text pairs meet WCAG AA (4.5:1). Field edges and focus rings meet 3:1.
 - The share panel shows while the room has no messages, even when it has events.
 
 ### Motion
-One moment only: a short slide-in (180 ms) for new messages. History and catch-up messages from a join do not slide in. Controls also change colour with a 150 ms transition on hover. No motion at all when the user prefers reduced motion.
+One main moment: a short slide-in (180 ms) for new messages and events. History and catch-up messages from a join do not slide in. The toast fades in over 150 ms, and controls change colour with a 150 ms transition on hover. No motion at all when the user prefers reduced motion.
 
 ### Accessibility and mobile
 - Visible focus rings on all controls. Labels use `htmlFor`.
 - The message list is an `<ol>` inside an element with `role="log"`, so screen readers announce new messages and still read the messages as a list.
+- The end-to-end tests run axe on the home page, the empty room with the share panel, the open leave dialog and a room with a message, in light and dark, and allow no serious or critical violations.
 - Layout uses `100dvh` and safe-area insets, so the composer stays above the mobile keyboard.
