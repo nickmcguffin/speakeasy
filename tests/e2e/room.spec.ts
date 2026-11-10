@@ -37,10 +37,23 @@ const pageBackgrounds: Record<ColorScheme, string> = { light: "rgb(232, 237, 233
 async function expectNoSeriousViolations(page: Page, colorScheme: ColorScheme) {
   await expect(page.locator("body")).toHaveCSS("background-color", pageBackgrounds[colorScheme]);
   const results = await new AxeBuilder({ page }).analyze();
+  // One line per failing element: the rule, the element (its selector and opening tag, without its
+  // text) and, for contrast, the colours axe measured.
   const violations: string[] = [];
   for (const violation of results.violations) {
-    if (violation.impact === "serious" || violation.impact === "critical") {
-      violations.push(`${violation.id}: ${violation.help}`);
+    if (violation.impact !== "serious" && violation.impact !== "critical") {
+      continue;
+    }
+    for (const node of violation.nodes) {
+      const openingTag = node.html.slice(0, node.html.indexOf(">") + 1);
+      let line = `${violation.id} at ${node.target.join(" ")} ${openingTag}`;
+      for (const check of node.any) {
+        const contrast = check.data;
+        if (contrast?.contrastRatio !== undefined) {
+          line += `: ${contrast.fgColor} on ${contrast.bgColor} is ${contrast.contrastRatio}:1, expected ${contrast.expectedContrastRatio}`;
+        }
+      }
+      violations.push(line);
     }
   }
   expect(violations).toEqual([]);
