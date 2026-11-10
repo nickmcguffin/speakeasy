@@ -155,7 +155,7 @@ These need no database. See "Testing" for the integration and end-to-end tests.
 |---|---|---|---|
 | Unit (Vitest) | `npm test` | Encryption (`client/crypto.ts`), every server validation rule at its limits, the room reducer, own messages, message groups and initials | Nothing |
 | Integration (Vitest) | `npm run test:integration` | The real server on a random port: the REST routes and their errors, join and send errors, a repeated `clientId`, the `since` catch-up, presence, and join and leave events | `TEST_DATABASE_URL` |
-| End to end (Playwright) | `npm run test:e2e` | The built app in Chromium: two people chat and see the history after a reload, a link without the key, the leave dialog, and an axe accessibility check of the home page and a room | `TEST_DATABASE_URL`, Playwright Chromium |
+| End to end (Playwright) | `npm run test:e2e` | The built app in Chromium: two people chat and see the history after a reload, a link without the key, the leave dialog, and an axe accessibility check in the light and dark themes of the home page, the empty room with the share panel, the open leave dialog and a room with a message | `TEST_DATABASE_URL`, Playwright Chromium |
 
 `npm run test:all` runs all three levels in that order. `npm run test:e2e` builds the app first.
 

@@ -29,7 +29,13 @@ async function sendMessage(page: Page, text: string) {
   await page.keyboard.press("Enter");
 }
 
-async function seriousAccessibilityViolations(page: Page) {
+type ColorScheme = "light" | "dark";
+
+// The page background in each theme (the bg token), to check that the theme is the one asked for.
+const pageBackgrounds: Record<ColorScheme, string> = { light: "rgb(232, 237, 233)", dark: "rgb(18, 24, 21)" };
+
+async function expectNoSeriousViolations(page: Page, colorScheme: ColorScheme) {
+  await expect(page.locator("body")).toHaveCSS("background-color", pageBackgrounds[colorScheme]);
   const results = await new AxeBuilder({ page }).analyze();
   const violations: string[] = [];
   for (const violation of results.violations) {
@@ -37,7 +43,7 @@ async function seriousAccessibilityViolations(page: Page) {
       violations.push(`${violation.id}: ${violation.help}`);
     }
   }
-  return violations;
+  expect(violations).toEqual([]);
 }
 
 test("two people chat with the full link, and a reload shows the history", async ({ page, browser }) => {
@@ -81,17 +87,39 @@ test("the creator who has not copied the link is asked before leaving", async ({
   await expect(page).toHaveURL("/");
 });
 
-test("the home page has no serious or critical accessibility violations", async ({ page }) => {
-  await page.goto("/");
-  await expect(page.getByRole("button", { name: "Create a room" })).toBeVisible();
+// The theme follows the system setting until the user picks one, so the emulated setting picks it.
+for (const colorScheme of ["light", "dark"] as const) {
+  test.describe(`accessibility in the ${colorScheme} theme`, () => {
+    test.use({ colorScheme });
 
-  expect(await seriousAccessibilityViolations(page)).toEqual([]);
-});
+    test("the home page has no serious or critical violations", async ({ page }) => {
+      await page.goto("/");
+      await expect(page.getByRole("button", { name: "Create a room" })).toBeVisible();
 
-test("a room has no serious or critical accessibility violations", async ({ page }) => {
-  await createRoom(page, "Ada");
-  await sendMessage(page, "A message to check");
-  await expect(page.getByText("A message to check")).toBeVisible();
+      await expectNoSeriousViolations(page, colorScheme);
+    });
 
-  expect(await seriousAccessibilityViolations(page)).toEqual([]);
-});
+    test("the empty room with the share panel has no serious or critical violations", async ({ page }) => {
+      await createRoom(page, "Ada");
+      await expect(page.getByRole("region", { name: "Share this room" })).toBeVisible();
+
+      await expectNoSeriousViolations(page, colorScheme);
+    });
+
+    test("the open leave dialog has no serious or critical violations", async ({ page }) => {
+      await createRoom(page, "Ada");
+      await page.getByRole("button", { name: "Leave room" }).click();
+      await expect(page.getByRole("dialog", { name: "Save the link before you leave?" })).toBeVisible();
+
+      await expectNoSeriousViolations(page, colorScheme);
+    });
+
+    test("a room with a message has no serious or critical violations", async ({ page }) => {
+      await createRoom(page, "Ada");
+      await sendMessage(page, "A message to check");
+      await expect(page.getByText("A message to check")).toBeVisible();
+
+      await expectNoSeriousViolations(page, colorScheme);
+    });
+  });
+}
