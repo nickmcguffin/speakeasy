@@ -8,8 +8,10 @@ const databaseUrl = process.env.TEST_DATABASE_URL;
 export default defineConfig({
   testDir: "tests/e2e",
   forbidOnly: Boolean(process.env.CI),
-  reporter: "list",
-  use: { baseURL: `http://localhost:${port}` },
+  // In CI also an HTML report in playwright-report/, which the workflow uploads when a step fails.
+  reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
+  // A failed test keeps its trace and a screenshot in test-results/.
+  use: { baseURL: `http://localhost:${port}`, trace: "retain-on-failure", screenshot: "only-on-failure" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: databaseUrl
     ? {
