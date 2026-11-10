@@ -4,7 +4,7 @@ type RecordBase = {
   id: number; // server ID, used for ordering and the `since` cursor (any kind)
   roomId: string;
   authorName: string; // plain text (see Known limits in README)
-  authorKey: string | null; // the author's presenceKey. null for rows from before step 7e
+  authorKey: string | null; // the author's presenceKey. null for rows from before author keys
   createdAt: string; // ISO 8601
 };
 

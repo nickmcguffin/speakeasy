@@ -9,7 +9,12 @@
   "scripts": {
     "dev": "concurrently --names client,server \"vite\" \"tsx watch --clear-screen=false --env-file-if-exists=.env server/index.ts\"",
     "build": "tsc -p client && vite build && tsc -p server",
-    "start": "node dist/server/index.js"
+    "start": "node dist/server/index.js",
+    "typecheck": "tsc -p client && tsc -p server --noEmit && tsc -p tests",
+    "test": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:e2e": "npm run build && playwright test",
+    "test:all": "npm test && npm run test:integration && npm run test:e2e"
   },
   "dependencies": {
     "@fontsource-variable/instrument-sans": "^5.3.0",
@@ -22,6 +27,8 @@
     "socket.io-client": "^4.8.4"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "^1.65.0",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.6",
     "@types/pg": "^8.23.1",
@@ -31,6 +38,7 @@
     "concurrently": "^10.0.6",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vite": "^8.3.6"
+    "vite": "^8.3.6",
+    "vitest": "^5.1.0"
   }
 }

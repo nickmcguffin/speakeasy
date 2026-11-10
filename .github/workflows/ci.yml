@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # A throwaway database for the integration and end-to-end tests. Its password is not a secret:
+    # the container exists only for this job.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: speakeasy
+          POSTGRES_PASSWORD: speakeasy
+          POSTGRES_DB: speakeasy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U speakeasy"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgresql://speakeasy:speakeasy@localhost:5432/speakeasy_test
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+      - run: npm run test:integration
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
+      # The traces, screenshots and HTML report of failed end-to-end tests. They hold only test data.
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-results
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7

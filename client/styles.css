@@ -380,11 +380,15 @@ textarea:hover {
   padding: 1rem max(1rem, env(safe-area-inset-right)) 1rem max(1rem, env(safe-area-inset-left));
 }
 
-.messages {
+.message-log {
   box-sizing: border-box;
   width: 100%;
   max-width: 48rem;
   margin: auto auto 0;
+}
+
+.messages {
+  margin: 0;
   padding: 0;
   list-style: none;
 }
@@ -395,7 +399,7 @@ textarea:hover {
 }
 
 /* Without messages the note takes all the free space, so it is centred. */
-.messages:empty {
+.message-log:has(> .messages:empty) {
   margin-top: 0;
 }
 

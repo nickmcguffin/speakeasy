@@ -499,5 +499,5 @@ One moment only: a short slide-in (180 ms) for new messages. History and catch-u
 
 ### Accessibility and mobile
 - Visible focus rings on all controls. Labels use `htmlFor`.
-- Message list has `role="log"`, so screen readers announce new messages.
+- The message list is an `<ol>` inside an element with `role="log"`, so screen readers announce new messages and still read the messages as a list.
 - Layout uses `100dvh` and safe-area insets, so the composer stays above the mobile keyboard.

@@ -1,5 +1,7 @@
 # Speakeasy
 
+[![CI](https://github.com/nickmcguffin/speakeasy/actions/workflows/ci.yml/badge.svg)](https://github.com/nickmcguffin/speakeasy/actions/workflows/ci.yml)
+
 ## What it is
 An MVP for a very simple private chat application. A user creates a room, shares the link, and other people use the link to join and chat in real time. Messages are end-to-end encrypted with one shared key per room (see "Encryption" for what this does and does not protect).
 
@@ -138,3 +140,32 @@ npm start
 Open http://localhost:3000. The server serves the built client and the WebSocket on one port.
 
 Set `PORT` to run the server on a different port in either mode.
+
+**Checks**
+```sh
+npm run typecheck
+npm test
+```
+These need no database. See "Testing" for the integration and end-to-end tests.
+
+## Testing
+[CI](.github/workflows/ci.yml) runs every level on each push and pull request, with a throwaway Postgres in a service container. The tests are in `tests/`.
+
+| Level | Command | What it covers | Needs |
+|---|---|---|---|
+| Unit (Vitest) | `npm test` | Encryption (`client/crypto.ts`), every server validation rule at its limits, the room reducer, own messages, message groups and initials | Nothing |
+| Integration (Vitest) | `npm run test:integration` | The real server on a random port: the REST routes and their errors, join and send errors, a repeated `clientId`, the `since` catch-up, presence, and join and leave events | `TEST_DATABASE_URL` |
+| End to end (Playwright) | `npm run test:e2e` | The built app in Chromium: two people chat and see the history after a reload, a link without the key, the leave dialog, and an axe accessibility check in the light and dark themes of the home page, the empty room with the share panel, the open leave dialog and a room with a message | `TEST_DATABASE_URL`, Playwright Chromium |
+
+`npm run test:all` runs all three levels in that order. `npm run test:e2e` builds the app first.
+
+**Test database.** The integration and end-to-end tests use `TEST_DATABASE_URL` and never `DATABASE_URL`. Without it they are skipped with a message. Use a database for testing, such as a Neon dev branch or a local Postgres, never production:
+```sh
+export TEST_DATABASE_URL="postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=verify-full"
+npm run test:all
+```
+Each test creates its own rooms, and each test file deletes the rooms it created when it finishes (by their IDs, never all rows). A run that is stopped part way can leave some behind.
+
+**Browser.** Install Playwright's Chromium once with `npx playwright install chromium` (add `--with-deps` on a Linux machine without its system libraries).
+
+The integration tests take about 20 seconds, because two of them wait for the server's 5-second timer for "left" events.

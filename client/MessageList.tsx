@@ -1,6 +1,6 @@
 import { ArrowDown } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { ChatRecord, PendingMessage, SendFailure } from "./roomState";
+import { type ChatRecord, isOwnRecord, type PendingMessage, type SendFailure } from "./roomState";
 
 const failureText: Record<SendFailure, string> = {
   network: "Failed to send. Check your connection.",
@@ -129,7 +129,7 @@ export function MessageList({
   let lastOtherMessageId: number | undefined;
   for (let index = messages.length - 1; index >= 0; index--) {
     const record = messages[index];
-    if (record.kind === "message" && !(record.authorKey !== null && record.authorKey === presenceKey)) {
+    if (record.kind === "message" && !isOwnRecord(record, presenceKey)) {
       lastOtherMessageId = record.id;
       break;
     }
@@ -214,11 +214,9 @@ export function MessageList({
     }
   };
 
-  // Yours: the row's author key is this browser's. A row without an author key (from before
-  // author keys) is never yours, whatever its name.
   const entries: Entry[] = [];
   for (const record of messages) {
-    const mine = record.authorKey !== null && record.authorKey === presenceKey;
+    const mine = isOwnRecord(record, presenceKey);
     if (record.kind !== "message") {
       const who = mine ? "You" : record.authorName;
       entries.push({
@@ -291,9 +289,10 @@ export function MessageList({
       >
         {top}
         {note && <p className="empty-note">{note}</p>}
-        <ol className="messages" role="log" aria-label="Messages">
-          {items}
-        </ol>
+        {/* The log role is on a wrapper, so the list inside keeps its list semantics. */}
+        <div className="message-log" role="log" aria-label="Messages">
+          <ol className="messages">{items}</ol>
+        </div>
       </div>
       {/* One stack, so "New messages" and the toast never cover each other. */}
       <div className="list-overlay">
