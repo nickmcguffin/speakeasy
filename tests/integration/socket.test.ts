@@ -10,23 +10,27 @@ import type {
   SendPayload,
   ServerToClientEvents,
 } from "../../shared/types";
+import { deleteRooms } from "../deleteRooms";
 
 type ClientSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 type Received = { event: string; payload: unknown; at: number };
 
 const serverUrl = inject("serverUrl");
 const openSockets: ClientSocket[] = [];
+const createdRoomIds: string[] = [];
 const iv = "AAAAAAAAAAAAAAAA";
 
-afterAll(() => {
+afterAll(async () => {
   for (const socket of openSockets) {
     socket.disconnect();
   }
+  await deleteRooms(createdRoomIds);
 });
 
 async function createRoom(): Promise<string> {
   const response = await fetch(`${serverUrl}/api/rooms`, { method: "POST" });
   const { roomId } = await response.json();
+  createdRoomIds.push(roomId);
   return roomId;
 }
 

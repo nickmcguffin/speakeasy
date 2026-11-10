@@ -159,12 +159,12 @@ These need no database. See "Testing" for the integration and end-to-end tests.
 
 `npm run test:all` runs all three levels in that order. `npm run test:e2e` builds the app first.
 
-**Test database.** The integration and end-to-end tests use `TEST_DATABASE_URL` and never `DATABASE_URL`. Without it they are skipped with a message. Use a database that can fill up with test rooms, such as a Neon dev branch or a local Postgres, never production:
+**Test database.** The integration and end-to-end tests use `TEST_DATABASE_URL` and never `DATABASE_URL`. Without it they are skipped with a message. Use a database for testing, such as a Neon dev branch or a local Postgres, never production:
 ```sh
 export TEST_DATABASE_URL="postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=verify-full"
 npm run test:all
 ```
-Each test creates its own rooms and leaves them in the database.
+Each test creates its own rooms, and each test file deletes the rooms it created when it finishes (by their IDs, never all rows). A run that is stopped part way can leave some behind.
 
 **Browser.** Install Playwright's Chromium once with `npx playwright install chromium` (add `--with-deps` on a Linux machine without its system libraries).
 

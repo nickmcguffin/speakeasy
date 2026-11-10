@@ -1,12 +1,17 @@
 import { randomUUID } from "node:crypto";
-import { describe, expect, inject, test } from "vitest";
+import { afterAll, describe, expect, inject, test } from "vitest";
+import { deleteRooms } from "../deleteRooms";
 
 const serverUrl = inject("serverUrl");
+const createdRoomIds: string[] = [];
+
+afterAll(() => deleteRooms(createdRoomIds));
 
 describe.skipIf(!serverUrl)("REST API", () => {
   test("creating a room with no body gives a room with no name", async () => {
     const created = await fetch(`${serverUrl}/api/rooms`, { method: "POST" });
     const { roomId } = await created.json();
+    createdRoomIds.push(roomId);
 
     expect(created.status).toBe(201);
     const room = await fetch(`${serverUrl}/api/rooms/${roomId}`);
@@ -21,6 +26,7 @@ describe.skipIf(!serverUrl)("REST API", () => {
       body: JSON.stringify(name),
     });
     const { roomId } = await created.json();
+    createdRoomIds.push(roomId);
 
     expect(created.status).toBe(201);
     const room = await fetch(`${serverUrl}/api/rooms/${roomId}`);

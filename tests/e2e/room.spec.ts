@@ -1,14 +1,21 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
+import { deleteRooms } from "../deleteRooms";
 
 test.skip(!process.env.TEST_DATABASE_URL, "TEST_DATABASE_URL is not set");
+
+const createdRoomIds: string[] = [];
+
+test.afterAll(() => deleteRooms(createdRoomIds));
 
 // Creates a room from the home page and joins it. Returns the full link, with the key.
 async function createRoom(page: Page, displayName: string) {
   await page.goto("/");
   await page.getByRole("button", { name: "Create a room" }).click();
   await joinWithName(page, displayName);
-  return page.url();
+  const link = page.url();
+  createdRoomIds.push(new URL(link).pathname.replace("/r/", ""));
+  return link;
 }
 
 async function joinWithName(page: Page, displayName: string) {
@@ -56,6 +63,7 @@ test("two people chat with the full link, and a reload shows the history", async
 test("a link without the key shows This link is incomplete", async ({ page, request }) => {
   const created = await request.post("/api/rooms");
   const { roomId } = await created.json();
+  createdRoomIds.push(roomId);
 
   await page.goto(`/r/${roomId}`);
 
