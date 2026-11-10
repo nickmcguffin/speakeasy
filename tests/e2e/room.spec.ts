@@ -34,8 +34,22 @@ type ColorScheme = "light" | "dark";
 // The page background in each theme (the bg token), to check that the theme is the one asked for.
 const pageBackgrounds: Record<ColorScheme, string> = { light: "rgb(232, 237, 233)", dark: "rgb(18, 24, 21)" };
 
+// Axe measures colours as they are on screen, so a row part way through its slide-in (opacity
+// below 1) or a colour transition gives a contrast the finished page does not have.
+async function waitForAnimationsToFinish(page: Page) {
+  await page.waitForFunction(() => {
+    for (const animation of document.getAnimations()) {
+      if (animation.playState === "running") {
+        return false;
+      }
+    }
+    return true;
+  });
+}
+
 async function expectNoSeriousViolations(page: Page, colorScheme: ColorScheme) {
   await expect(page.locator("body")).toHaveCSS("background-color", pageBackgrounds[colorScheme]);
+  await waitForAnimationsToFinish(page);
   const results = await new AxeBuilder({ page }).analyze();
   // One line per failing element: the rule, the element (its selector and opening tag, without its
   // text) and, for contrast, the colours axe measured.
@@ -131,6 +145,8 @@ for (const colorScheme of ["light", "dark"] as const) {
       await createRoom(page, "Ada");
       await sendMessage(page, "A message to check");
       await expect(page.getByText("A message to check")).toBeVisible();
+      // Sent: the server confirmed it, so the row shows its final state.
+      await expect(page.getByText("Sending...")).toHaveCount(0);
 
       await expectNoSeriousViolations(page, colorScheme);
     });
